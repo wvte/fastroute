@@ -102,6 +102,7 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 .mk-gps{background:#1565d8;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(21,101,216,.35);}
 .hnr-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;}
 .mk.ooo{border:3px solid var(--red);}
+.mk.steeg{border:3px solid var(--green);}
 #pkgWarn{position:absolute;left:0;right:0;z-index:520;background:#10141a;color:var(--accent);font-size:17px;font-weight:800;padding:10px 14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 #arrivePop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:850;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 26px;text-align:center;min-width:230px;border:4px solid var(--green);}
 #arrivePop.warn{border-color:var(--red);}
@@ -721,7 +722,7 @@ function drawStops() {
   state.stops.forEach(s => {
     if (!s.lat) return;
     const isCur = s === cur;
-    const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '');
+    const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steeg ? ' steeg' : '');
     const size = isCur ? 44 : 30;
     const icon = L.divIcon({
       className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
@@ -926,6 +927,46 @@ function insertOverflowStops() {
   return ovf.length;
 }
 
+/* ---------- STEEG-KOPPELING ----------
+   Twee adressen die alleen via dezelfde steeg bereikbaar zijn worden
+   één stop, bezorgd bij de juiste ingang, met beide pakketnummers.
+   Voorbeeld: Molenenk 19 (nr 14) + Molenenk 16 (nr 55).            */
+function linkSteeg(i) {
+  const a = state.stops[i];
+  const inp = prompt('Stopnummer van de andere stop in dezelfde steeg.\n\nVoer het nummer in van de stop die bij de juiste ingang ligt; daar wordt samen bezorgd.');
+  if (!inp) return;
+  const q = inp.trim();
+  const j = state.stops.findIndex(s => s !== a && s.status === 'pending' &&
+    (String(s.seq) === q || (s.seqs && s.seqs.some(x => String(x) === q))));
+  if (j === -1) { alert('Stop nr ' + q + ' niet gevonden (of al afgerond).'); return; }
+  const b = state.stops[j]; // b = ingevoerde stop = juiste ingang, daar bezorgen
+  if (!confirm('Steeg-koppeling maken?\n\n' +
+    a.street + ' ' + a.huisnr + ' (nr ' + seqLabel(a) + ')\n+ ' + b.street + ' ' + b.huisnr + ' (nr ' + seqLabel(b) + ')\n\nSamen bezorgen bij: ' + b.street + ' ' + b.huisnr)) return;
+  const seqs = [...(a.seqs || [a.seq]), ...(b.seqs || [b.seq])].sort((x, y) => (+x || 1e9) - (+y || 1e9));
+  const comb = Object.assign({}, b, {
+    seqs, seq: seqs[0], steeg: true,
+    steegOther: a.street + ' ' + a.huisnr + (a.toevoeging ? ' ' + a.toevoeging.replace(/^-/, '') : ''),
+    steegParts: [JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b))],
+    sender: [a.sender, b.sender].filter(Boolean).join(' + ')
+  });
+  const pos = Math.min(i, j); // op de vroegste plek in de route
+  state.stops = state.stops.filter(s => s !== a && s !== b);
+  state.stops.splice(pos, 0, comb);
+  afterStopChange(true);
+}
+function unlinkSteeg(i) {
+  const s = state.stops[i];
+  if (!s.steegParts) return;
+  const parts = s.steegParts.map(p => {
+    const c = JSON.parse(JSON.stringify(p));
+    c.status = 'pending';
+    delete c.steeg; delete c.steegParts; delete c.steegOther;
+    return c;
+  });
+  state.stops.splice(i, 1, ...parts);
+  afterStopChange(true);
+}
+
 /* ---------- DEPOT: terugkeer na de laatste stop ---------- */
 let depotArrived = false, depotDur = null;
 function depotPoint() {
@@ -987,6 +1028,15 @@ function showArrivePop(s) {
   $('apNum').textContent = s.huisnr + (s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : '');
   $('apStreet').textContent = s.street + ' · ' + s.city;
   const mps = minPendingSeq();
+  if (s.steeg) {
+    $('apNum').textContent = s.huisnr + (s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : '');
+    $('apStreet').textContent = s.street + ' · ' + s.city;
+    $('apPkg').innerHTML = '🚶 STEEG · PAK PAKKETTEN <b>NR ' + seqLabel(s) + '</b><br>Hier ook bezorgen: ' + s.steegOther;
+    $('arrivePop').classList.remove('warn');
+    $('arrivePop').style.display = 'block';
+    beep();
+    return;
+  }
   const pk = s.seqs ? 'PAKKETTEN' : 'PAKKET';
   $('apPkg').innerHTML = warn
     ? `⚠️ PAK ${pk} <b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? ' (900-SERIE)' : ''}<br>${s.sender || ''}<br><small>${mps !== Infinity ? 'Niet het volgende pakket (nr ' + mps + ')!' : 'Let op de aparte stapel!'}</small>`
@@ -999,6 +1049,12 @@ function hideArrivePop() { $('arrivePop').style.display = 'none'; }
 function updatePkgWarn() {
   const cur = currentStop();
   const el = $('pkgWarn');
+  if (cur && cur.steeg) {
+    el.innerHTML = `🚶 STEEG · PAK PAKKETTEN NR ${seqLabel(cur)} · hier ook: ${cur.steegOther}`;
+    el.style.display = 'block';
+    el.style.top = $('navTop').offsetHeight + 'px';
+    return;
+  }
   if (cur && nseq(cur) !== Infinity && nseq(cur) !== minPendingSeq()) {
     const mps = minPendingSeq();
     el.innerHTML = `📦 PAK ${cur.seqs ? 'PAKKETTEN' : 'PAKKET'} NR ${seqLabel(cur)}` + (nseq(cur) >= 900 ? ' (900-SERIE)' : '') + (cur.sender ? ` (${cur.sender})` : '') + (mps !== Infinity ? ` — niet nr ${mps}` : '');
@@ -1091,6 +1147,7 @@ function updateNavCard() {
   const last = state.legInfo[state.legInfo.length - 1];
   $('navMeta').textContent =
     `Stop ${done + 1}/${total} · ${cur.postcode} ${cur.city} · slot ${cur.window}` +
+    (cur.steeg ? ' · 🚶 STEEG +' + cur.steegOther : '') +
     (cur.afhaal ? ' · 📦 AFHAAL' : '') +
     (last ? ` · klaar ±${new Date(Date.now() + last.cumDur * 1000).toTimeString().slice(0, 5)}` : '') +
     (state.optSaving ? ` · opt. -${state.optSaving} min` : '');
@@ -1139,7 +1196,7 @@ function renderStopList() {
     const li = state.legInfo.find(l => l.stop === s);
     row.innerHTML = `<div class="num">${s.status === 'done' ? '✓' : s.status === 'skipped' ? '⏭' : s.seq}</div>
       <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}</div>
-      <div class="a2">${s.seqs ? '📦 ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · 📦 AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ⚠️ geen positie'}</div></div>
+      <div class="a2">${s.steeg ? '🚶 steeg (ook ' + s.steegOther + ') · ' : ''}${s.seqs ? '📦 ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · 📦 AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ⚠️ geen positie'}</div></div>
       <div class="eta">${s.status === 'pending' && li ? fmtEta(li.cumDur).replace('aank. ', '') : ''}</div>`;
     row.onclick = () => openStopMenu(i);
     list.appendChild(row);
@@ -1169,6 +1226,8 @@ function openStopMenu(i) {
     mk('🎯 Maak dit de volgende stop', '', () => { moveToFront(i); });
     mk('⬆️ Eén plek eerder', 'grey', () => { moveStop(i, -1); });
     mk('⬇️ Eén plek later', 'grey', () => { moveStop(i, +1); });
+    if (!s.steeg) mk('🚶 Koppel met steeg-stop...', 'grey', () => linkSteeg(i));
+    else mk('🚶 Steeg-koppeling opheffen', 'grey', () => unlinkSteeg(i));
   } else {
     mk('↩️ Opnieuw inplannen', '', () => { s.status = 'pending'; afterStopChange(true); });
   }
