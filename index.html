@@ -102,6 +102,10 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 .mk-gps{background:#1565d8;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(21,101,216,.35);}
 .hnr-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;}
 .mk.ooo{border:3px solid var(--red);}
+.mk.steeg{border:3px solid #0d5c2e;}
+#arrivePop.steeg{border-color:#0d5c2e;}
+#arrivePop.steeg .apNum{color:#0d5c2e;}
+#pkgWarn.steeg{background:#0d5c2e;}
 #pkgWarn{position:absolute;left:0;right:0;z-index:520;background:#10141a;color:var(--accent);font-size:17px;font-weight:800;padding:10px 14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 #arrivePop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:850;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 26px;text-align:center;min-width:230px;border:4px solid var(--green);}
 #arrivePop.warn{border-color:var(--red);}
@@ -721,7 +725,7 @@ function drawStops() {
   state.stops.forEach(s => {
     if (!s.lat) return;
     const isCur = s === cur;
-    const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '');
+    const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steegWith ? ' steeg' : '');
     const size = isCur ? 44 : 30;
     const icon = L.divIcon({
       className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
@@ -984,14 +988,28 @@ function outOfOrderSet() {
 }
 function showArrivePop(s) {
   const warn = nseq(s) !== Infinity && nseq(s) !== minPendingSeq();
+  const partner = steegPartner(s);
   $('apNum').textContent = s.huisnr + (s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : '');
   $('apStreet').textContent = s.street + ' · ' + s.city;
   const mps = minPendingSeq();
   const pk = s.seqs ? 'PAKKETTEN' : 'PAKKET';
-  $('apPkg').innerHTML = warn
-    ? `⚠️ PAK ${pk} <b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? ' (900-SERIE)' : ''}<br>${s.sender || ''}<br><small>${mps !== Infinity ? 'Niet het volgende pakket (nr ' + mps + ')!' : 'Let op de aparte stapel!'}</small>`
-    : (nseq(s) === Infinity ? '📦 Handmatige stop' : `📦 ${s.seqs ? 'Pakketten nr ' + seqLabel(s) : 'Pakket nr ' + s.seq}` + (s.sender ? ' · ' + s.sender : ''));
-  $('arrivePop').classList.toggle('warn', warn);
+  let pkgHtml, isSteeg = false;
+  if (partner) {
+    isSteeg = true;
+    const partnerIsLater = state.stops.indexOf(partner) > state.stops.indexOf(s);
+    if (partnerIsLater && partner.status === 'pending') {
+      pkgHtml = `🚶 STEEG — neem dit pakket mee!<br><b>Bezorg samen bij:<br>${partner.street} ${partner.huisnr} (nr ${seqLabel(partner)})</b>`;
+    } else {
+      pkgHtml = `🚶 STEEG — bezorg hier ook pakket nr ${s.steegWith}<br><b>Pakketten ${seqLabel(s)} + ${s.steegWith}</b>`;
+    }
+  } else if (warn) {
+    pkgHtml = `⚠️ PAK ${pk} <b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? ' (900-SERIE)' : ''}<br>${s.sender || ''}<br><small>${mps !== Infinity ? 'Niet het volgende pakket (nr ' + mps + ')!' : 'Let op de aparte stapel!'}</small>`;
+  } else {
+    pkgHtml = nseq(s) === Infinity ? '📦 Handmatige stop' : `📦 ${s.seqs ? 'Pakketten nr ' + seqLabel(s) : 'Pakket nr ' + s.seq}` + (s.sender ? ' · ' + s.sender : '');
+  }
+  $('apPkg').innerHTML = pkgHtml;
+  $('arrivePop').classList.toggle('warn', warn && !isSteeg);
+  $('arrivePop').classList.toggle('steeg', isSteeg);
   $('arrivePop').style.display = 'block';
   beep();
 }
@@ -999,7 +1017,27 @@ function hideArrivePop() { $('arrivePop').style.display = 'none'; }
 function updatePkgWarn() {
   const cur = currentStop();
   const el = $('pkgWarn');
-  if (cur && nseq(cur) !== Infinity && nseq(cur) !== minPendingSeq()) {
+  if (!cur) { el.style.display = 'none'; return; }
+  // Steeg: eerste stop (moet pakket meenemen)
+  const partner = steegPartner(cur);
+  if (partner && partner.status === 'pending' && state.stops.indexOf(partner) > state.stops.indexOf(cur)) {
+    el.innerHTML = `🚶 STEEG · neem pakket ${seqLabel(cur)} mee · bezorg samen bij ${partner.street} ${partner.huisnr} (nr ${seqLabel(partner)})`;
+    el.classList.add('steeg');
+    el.style.display = 'block';
+    el.style.top = $('navTop').offsetHeight + 'px';
+    return;
+  }
+  // Steeg: tweede stop (partner al "opgehaald", bezorg hier samen)
+  const incomingSteeg = state.stops.find(x => x.steegWith === String(cur.seq) && x.status === 'done' && state.stops.indexOf(x) < state.stops.indexOf(cur));
+  if (incomingSteeg) {
+    el.innerHTML = `🚶 STEEG · bezorg hier ook pakket nr ${seqLabel(incomingSteeg)} (meegenomen van ${incomingSteeg.street} ${incomingSteeg.huisnr})`;
+    el.classList.add('steeg');
+    el.style.display = 'block';
+    el.style.top = $('navTop').offsetHeight + 'px';
+    return;
+  }
+  el.classList.remove('steeg');
+  if (nseq(cur) !== Infinity && nseq(cur) !== minPendingSeq()) {
     const mps = minPendingSeq();
     el.innerHTML = `📦 PAK ${cur.seqs ? 'PAKKETTEN' : 'PAKKET'} NR ${seqLabel(cur)}` + (nseq(cur) >= 900 ? ' (900-SERIE)' : '') + (cur.sender ? ` (${cur.sender})` : '') + (mps !== Infinity ? ` — niet nr ${mps}` : '');
     el.style.display = 'block';
@@ -1043,6 +1081,32 @@ async function refreshSpeedLimit() {
 }
 
 function toggleFollow() { follow = true; if (lastPos && map) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 17)); }
+
+/* ---------- STEEG-KOPPELING ---------- */
+function steegPartner(s) {
+  if (!s.steegWith) return null;
+  return state.stops.find(x => String(x.seq) === String(s.steegWith)) || null;
+}
+function setSteegKoppeling(i) {
+  const s = state.stops[i];
+  const input = prompt(`Voer het stopnummer in waarmee stop ${s.seq} (${s.street} ${s.huisnr}) samen via de steeg bezorgd moet worden:`);
+  if (!input) return;
+  const partnerSeq = input.trim();
+  const j = state.stops.findIndex(x => String(x.seq) === partnerSeq);
+  if (j === -1) { alert('Stop nr ' + partnerSeq + ' niet gevonden in deze rit.'); return; }
+  state.stops[i].steegWith = partnerSeq;
+  state.stops[j].steegWith = String(s.seq);
+  afterStopChange(false);
+}
+function removeSteegKoppeling(i) {
+  const s = state.stops[i];
+  if (s.steegWith) {
+    const j = state.stops.findIndex(x => String(x.seq) === String(s.steegWith));
+    if (j !== -1) state.stops[j].steegWith = null;
+  }
+  s.steegWith = null;
+  afterStopChange(false);
+}
 
 function beep() {
   if (!state.settings.sound) return;
@@ -1139,7 +1203,7 @@ function renderStopList() {
     const li = state.legInfo.find(l => l.stop === s);
     row.innerHTML = `<div class="num">${s.status === 'done' ? '✓' : s.status === 'skipped' ? '⏭' : s.seq}</div>
       <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}</div>
-      <div class="a2">${s.seqs ? '📦 ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · 📦 AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ⚠️ geen positie'}</div></div>
+      <div class="a2">${s.seqs ? '📦 ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · 📦 AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.steegWith ? ' · 🚶 steeg met nr ' + s.steegWith : ''}${s.lat ? '' : ' · ⚠️ geen positie'}</div></div>
       <div class="eta">${s.status === 'pending' && li ? fmtEta(li.cumDur).replace('aank. ', '') : ''}</div>`;
     row.onclick = () => openStopMenu(i);
     list.appendChild(row);
@@ -1175,6 +1239,11 @@ function openStopMenu(i) {
   if (s.lat) mk('🗺 Open in Google Maps', 'grey', () => {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving`, '_blank');
   });
+  if (s.steegWith) {
+    mk(`🚶 Steeg: gekoppeld aan nr ${s.steegWith} · tik om te verwijderen`, 'grey', () => removeSteegKoppeling(i));
+  } else {
+    mk('🚶 Koppel als steeg-stop...', 'grey', () => setSteegKoppeling(i));
+  }
   mk('🗑 Verwijder uit rit', 'red', () => {
     if (confirm('Stop verwijderen?')) { state.stops.splice(i, 1); afterStopChange(true); }
   });
@@ -1214,76 +1283,4 @@ async function addStop(mode) {
   };
   const res = await geocodeOne(stop);
   if (!res) { $('addMsg').textContent = 'Adres niet gevonden. Controleer postcode en huisnummer.'; return; }
-  stop.lat = res.lat; stop.lon = res.lon;
-  // straat en plaats ophalen voor weergave
-  try {
-    const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(pc + ' ' + mNr[1])}&fq=type:adres&rows=1`);
-    const d = (await r.json()).response.docs[0];
-    if (d) { stop.street = (d.straatnaam || '').toUpperCase(); stop.city = (d.woonplaatsnaam || '').toUpperCase(); }
-  } catch (e) {}
-  if (!stop.street) stop.street = pc;
-  let insertIdx;
-  if (mode === 'auto') {
-    insertIdx = bestInsertIndex(stop);
-  } else {
-    const firstPending = state.stops.findIndex(x => x.status === 'pending');
-    insertIdx = firstPending === -1 ? state.stops.length : firstPending + 1;
-  }
-  stop.seq = dottedLabel(insertIdx); // bijv. 15.1 als hij tussen 15 en 16 komt
-  state.stops.splice(insertIdx, 0, stop);
-  closePanel('panel-addstop');
-  $('addPC').value = ''; $('addNR').value = ''; $('addNote').value = '';
-  afterStopChange(true);
-}
-
-/* ---------- INSTELLINGEN ---------- */
-function setRadius(v) { state.settings.radius = +v; $('radVal').textContent = v; persist(); }
-function toggleSet(key, btnId) {
-  state.settings[key] = !state.settings[key];
-  $(btnId).classList.toggle('on', state.settings[key]);
-  persist();
-  if (key === 'houseNumbers') drawHouseNumbers();
-  if (key === 'optimize' && state.settings.optimize) rebuildRoute(true).then(() => { drawStops(); updateNavCard(); });
-}
-function syncSettingsUI() {
-  if (!state.settings.depot) state.settings.depot = { label: 'Wattstraat 3, Raalte', lat: null, lon: null };
-  $('depotAddr').value = state.settings.depot.label || '';
-  $('radius').value = state.settings.radius; $('radVal').textContent = state.settings.radius;
-  $('swAuto').classList.toggle('on', state.settings.autoAdvance);
-  $('swOpt').classList.toggle('on', state.settings.optimize);
-  $('swSound').classList.toggle('on', state.settings.sound);
-  $('swHnr').classList.toggle('on', state.settings.houseNumbers);
-}
-
-/* ---------- HERVATTEN ---------- */
-function resumeRide() {
-  const saved = loadPersisted();
-  if (!saved || !saved.stops) return;
-  state.stops = saved.stops;
-  state.settings = Object.assign(state.settings, saved.settings || {});
-  state.rides = [{ rit: saved.ride.rit, bezorger: saved.ride.bezorger, datum: saved.ride.datum, stops: [] }];
-  state.rideIdx = 0;
-  syncSettingsUI();
-  initMap();
-  show('scr-nav');
-  startGPS();
-  ensureDepot().then(() => rebuildRoute(false)).then(() => { drawStops(); updateNavCard(); });
-}
-
-// ETA's tonen kloktijden (nu + rijtijd): elke 30 s verversen
-setInterval(() => { if (currentStop() && $('scr-nav').classList.contains('active')) updateNavCard(); }, 30000);
-
-/* ---------- INIT ---------- */
-(function init() {
-  history.replaceState({ screen: 'scr-upload' }, '', '#/start');
-  syncSettingsUI();
-  const saved = loadPersisted();
-  if (saved && saved.stops && saved.stops.some(s => s.status === 'pending')) {
-    const done = saved.stops.filter(s => s.status !== 'pending').length;
-    $('resumeCard').style.display = 'block';
-    $('resumeInfo').textContent = `Rit ${saved.ride.rit} · ${saved.ride.bezorger} · ${done}/${saved.stops.length} stops gedaan`;
-  }
-})();
-</script>
-</body>
-</html>
+  sto
