@@ -248,6 +248,12 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
       <div class="setrow"><span>Huisnummers op kaart</span><button class="switch" id="swHnr" onclick="toggleSet('houseNumbers','swHnr')"></button></div>
+      <div style="padding:14px 4px;border-bottom:1px solid #eef1f5">
+        <div style="font-size:17px;margin-bottom:8px">🏠 Depot (terugkeer na laatste stop)</div>
+        <input class="txt" id="depotAddr" placeholder="bijv. Wattstraat 3, Raalte">
+        <button class="btn small" onclick="saveDepot()">Depot opslaan</button>
+        <div id="depotMsg" style="font-size:13px;color:#5b6470;margin-top:6px"></div>
+      </div>
       <div style="padding:14px 4px">
         <button class="btn red" onclick="endRide()">■ Rit beëindigen</button>
       </div>
@@ -275,7 +281,8 @@ let state = {
   rides: [],            // alle geparste ritten uit de PDF
   rideIdx: -1,          // gekozen rit
   stops: [],            // actieve stops (met lat/lon/status)
-  settings: { radius: 35, autoAdvance: true, optimize: true, sound: true, houseNumbers: true },
+  settings: { radius: 35, autoAdvance: true, optimize: true, sound: true, houseNumbers: true,
+    depot: { label: 'Wattstraat 3, Raalte', lat: null, lon: null } },
   routeGeom: null,      // polyline van OSRM
   legInfo: [],          // per pending stop: {dur, dist} cumulatief
   optSaving: 0
@@ -595,6 +602,8 @@ async function chooseRide(i) {
       failed.map(s => `${s.street} ${s.huisnr}, ${s.postcode}`).join('<br>') +
       '<br><small>Deze stops staan wel in de lijst, maar zonder kaartpositie.</small>';
   }
+  depotArrived = false;
+  await ensureDepot();
   // 2. 900-pakketten (overloop, geen eigen plek in de planning) slim inplannen
   const nOvf = insertOverflowStops();
   if (nOvf) $('loadmsg').textContent = `${nOvf} extra pakket(ten) (900-serie) ingepland...`;
@@ -662,7 +671,12 @@ async function rebuildRoute(allowOptimize) {
 /* ---------- NAVIGATIELIJN: alleen naar de huidige stop ---------- */
 let navLineOrigin = null, navLineTs = 0, navLineStop = null;
 async function updateNavLine() {
-  const cur = currentStop();
+  let cur = currentStop();
+  // alle stops klaar? Dan is het depot de bestemming
+  if (!cur && state.stops.length && !depotArrived && depotPoint()) {
+    cur = depotPoint();
+    depotDur = null;
+  }
   const origin = lastPos ? { lat: lastPos.lat, lon: lastPos.lon } : null;
   state.routeGeom = null;
   if (cur && cur.lat && origin) {
@@ -670,6 +684,7 @@ async function updateNavLine() {
       const route = await osrmRoute([origin, cur], 'full');
       state.routeGeom = route.geometry;
       navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
+      if (cur === depotPoint()) depotDur = route.duration;
       // ETA's live bijstellen: verse rijtijd naar de huidige stop,
       // alle volgende stops schuiven evenveel mee
       if (state.legInfo.length && state.legInfo[0].stop === cur) {
@@ -716,6 +731,14 @@ function drawStops() {
     m.on('click', () => openStopMenu(state.stops.indexOf(s)));
     stopMarkers.push(m);
   });
+  const dep = depotPoint();
+  if (dep) {
+    const icon = L.divIcon({
+      className: '', iconSize: [36, 36], iconAnchor: [18, 18],
+      html: `<div class="mk" style="width:36px;height:36px;background:#10141a;font-size:17px">🏠</div>`
+    });
+    stopMarkers.push(L.marker([dep.lat, dep.lon], { icon, zIndexOffset: 500 }).addTo(map));
+  }
   drawHouseNumbers();
 }
 
@@ -816,6 +839,12 @@ function onPos(p) {
     navLineStop = cur; navLineTs = Date.now();
     updateNavLine();
   }
+  if (!cur && state.stops.length && !depotArrived && depotPoint()) {
+    const dep = depotPoint();
+    const dd = hav(lastPos, dep);
+    $('navDist').firstChild.textContent = dd > 950 ? (dd / 1000).toFixed(1) + ' km' : Math.round(dd) + ' m';
+    if (dd <= state.settings.radius) { depotArrived = true; beep(); updateNavCard(); }
+  }
   if (cur && cur.lat) {
     const d = hav(lastPos, cur);
     $('navDist').firstChild.textContent = d > 950 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m';
@@ -895,6 +924,45 @@ function insertOverflowStops() {
   state.stops = state.stops.filter(s => !ovf.includes(s));
   for (const s of ovf) state.stops.splice(bestInsertIndex(s), 0, s);
   return ovf.length;
+}
+
+/* ---------- DEPOT: terugkeer na de laatste stop ---------- */
+let depotArrived = false, depotDur = null;
+function depotPoint() {
+  const d = state.settings.depot;
+  return (d && d.lat) ? d : null;
+}
+async function geocodeFree(q) {
+  try {
+    const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(q)}&fq=type:adres&rows=1`);
+    if (r.ok) {
+      const j = await r.json();
+      const d = j.response && j.response.docs && j.response.docs[0];
+      if (d && d.centroide_ll) {
+        const m = d.centroide_ll.match(/POINT\(([\d.]+) ([\d.]+)\)/);
+        if (m) return { lat: +m[2], lon: +m[1], naam: d.weergavenaam };
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+async function ensureDepot() {
+  const d = state.settings.depot;
+  if (!d || !d.label || d.lat) return;
+  const res = await geocodeFree(d.label);
+  if (res) { d.lat = res.lat; d.lon = res.lon; persist(); }
+}
+async function saveDepot() {
+  const q = $('depotAddr').value.trim();
+  if (!q) { state.settings.depot = { label: '', lat: null, lon: null }; persist(); $('depotMsg').textContent = 'Depot uitgeschakeld.'; drawStops(); return; }
+  $('depotMsg').textContent = 'Adres opzoeken...';
+  const res = await geocodeFree(q);
+  if (!res) { $('depotMsg').textContent = '⚠️ Adres niet gevonden. Probeer bijv. "Wattstraat 3, Raalte".'; return; }
+  state.settings.depot = { label: q, lat: res.lat, lon: res.lon };
+  depotArrived = false;
+  persist();
+  $('depotMsg').textContent = '✓ Gevonden: ' + res.naam;
+  drawStops(); updateNavLine(); updateNavCard();
 }
 
 /* ---------- NADER-POPUP & PAKKETVOLGORDE ---------- */
@@ -1004,10 +1072,17 @@ function updateNavCard() {
   const total = state.stops.length;
   const done = state.stops.filter(s => s.status !== 'pending').length;
   if (!cur) {
-    $('navStreet').textContent = '🎉 Rit voltooid!';
-    $('navMeta').textContent = `${total} stops afgerond`;
-    $('navDist').firstChild.textContent = '—';
-    $('navEta').textContent = '';
+    const dep = depotPoint();
+    if (dep && state.stops.length && !depotArrived) {
+      $('navStreet').textContent = '🏠 Naar depot';
+      $('navMeta').textContent = `${state.settings.depot.label} · alle ${total} stops klaar`;
+      $('navEta').textContent = depotDur ? fmtEta(depotDur) : '';
+    } else {
+      $('navStreet').textContent = '🎉 Rit voltooid!';
+      $('navMeta').textContent = `${total} stops afgerond` + (dep ? ' · terug bij depot' : '');
+      $('navDist').firstChild.textContent = '—';
+      $('navEta').textContent = '';
+    }
     $('pkgWarn').style.display = 'none';
     $('nextRow').style.display = 'none';
     return;
@@ -1032,6 +1107,7 @@ function updateNavCard() {
 
 /* ---------- STOPACTIES ---------- */
 async function afterStopChange(reroute) {
+  if (state.stops.some(s => s.status === 'pending')) depotArrived = false;
   if (popStop && popStop.status !== 'pending') { hideArrivePop(); popStop = null; }
   drawStops();
   updateNavCard();
@@ -1170,6 +1246,8 @@ function toggleSet(key, btnId) {
   if (key === 'optimize' && state.settings.optimize) rebuildRoute(true).then(() => { drawStops(); updateNavCard(); });
 }
 function syncSettingsUI() {
+  if (!state.settings.depot) state.settings.depot = { label: 'Wattstraat 3, Raalte', lat: null, lon: null };
+  $('depotAddr').value = state.settings.depot.label || '';
   $('radius').value = state.settings.radius; $('radVal').textContent = state.settings.radius;
   $('swAuto').classList.toggle('on', state.settings.autoAdvance);
   $('swOpt').classList.toggle('on', state.settings.optimize);
@@ -1189,7 +1267,7 @@ function resumeRide() {
   initMap();
   show('scr-nav');
   startGPS();
-  rebuildRoute(false).then(() => { drawStops(); updateNavCard(); });
+  ensureDepot().then(() => rebuildRoute(false)).then(() => { drawStops(); updateNavCard(); });
 }
 
 // ETA's tonen kloktijden (nu + rijtijd): elke 30 s verversen
