@@ -466,13 +466,62 @@ function optimizeOrder(n, M, maxShift = 3) {
 }
 
 /* ---------- SCHERMEN & PERSISTENTIE ---------- */
-function show(id) {
+/* ---------- ROUTER: elk scherm en paneel een eigen adres ----------
+   Zo werken de terugknop en de terug-swipe op iOS gewoon:
+   #/start -> #/ritten -> #/route -> #/route/stops enz.            */
+const ROUTES = { 'scr-upload': 'start', 'scr-rides': 'ritten', 'scr-loading': 'laden', 'scr-nav': 'route' };
+const PANELS = { 'panel-stops': 'stops', 'panel-stopmenu': 'stopmenu', 'panel-addstop': 'nieuwe-stop', 'panel-settings': 'instellingen' };
+let navInternal = false;
+
+function activeScreen() {
+  const s = document.querySelector('.screen.active');
+  return s ? s.id : 'scr-upload';
+}
+function applyScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
   if (id === 'scr-nav' && map) setTimeout(() => map.invalidateSize(), 150);
 }
-function openPanel(id) { $(id).classList.add('open'); }
-function closePanel(id) { $(id).classList.remove('open'); }
+function show(id) {
+  applyScreen(id);
+  if (navInternal) return;
+  const url = '#/' + ROUTES[id];
+  // laadscherm vervangt de entry: terug vanaf de route gaat naar de ritlijst
+  if (id === 'scr-loading') history.replaceState({ screen: id }, '', url);
+  else history.pushState({ screen: id }, '', url);
+}
+function openPanel(id) {
+  $(id).classList.add('open');
+  if (!navInternal) {
+    const scr = activeScreen();
+    history.pushState({ screen: scr, panel: id }, '', '#/' + ROUTES[scr] + '/' + PANELS[id]);
+  }
+}
+function closePanel(id) {
+  $(id).classList.remove('open');
+  // hoort deze paneel-entry bij de huidige history-state? Dan netjes terug
+  if (!navInternal && history.state && history.state.panel === id) {
+    navInternal = true;
+    history.back();
+    setTimeout(() => { navInternal = false; }, 50);
+  }
+}
+window.addEventListener('popstate', e => {
+  if (navInternal) return;
+  navInternal = true;
+  document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
+  let target = (e.state && e.state.screen) || 'scr-upload';
+  // valideer dat het scherm nog data heeft
+  if (target === 'scr-rides' && !state.rides.length) target = 'scr-upload';
+  if (target === 'scr-loading') target = state.rides.length ? 'scr-rides' : 'scr-upload';
+  if (target === 'scr-nav' && !state.stops.length) target = 'scr-upload';
+  applyScreen(target);
+  if (e.state && e.state.panel) {
+    // we kwamen op een paneel-state terecht (vooruit-knop): paneel tonen
+    $(e.state.panel).classList.add('open');
+  }
+  navInternal = false;
+});
 function persist() {
   try {
     const ride = state.rides[state.rideIdx];
@@ -1069,7 +1118,13 @@ function moveToFront(i) {
 }
 
 /* ---------- STOP TOEVOEGEN ---------- */
-function openAddStop() { closePanel('panel-stops'); $('addMsg').textContent = ''; openPanel('panel-addstop'); }
+function openAddStop() {
+  // wissel van paneel zonder extra history-entry (vervangt de stops-entry)
+  $('panel-stops').classList.remove('open');
+  $('addMsg').textContent = '';
+  $('panel-addstop').classList.add('open');
+  history.replaceState({ screen: activeScreen(), panel: 'panel-addstop' }, '', '#/' + ROUTES[activeScreen()] + '/nieuwe-stop');
+}
 async function addStop(mode) {
   const pc = $('addPC').value.trim().toUpperCase().replace(/\s/g, '');
   const nrRaw = $('addNR').value.trim();
@@ -1142,6 +1197,7 @@ setInterval(() => { if (currentStop() && $('scr-nav').classList.contains('active
 
 /* ---------- INIT ---------- */
 (function init() {
+  history.replaceState({ screen: 'scr-upload' }, '', '#/start');
   syncSettingsUI();
   const saved = loadPersisted();
   if (saved && saved.stops && saved.stops.some(s => s.status === 'pending')) {
