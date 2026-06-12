@@ -124,6 +124,14 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 .ic svg{width:26px;height:26px;fill:currentColor;display:block;margin:0 auto;}
 header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 #dropArt svg{width:84px;height:84px;display:block;margin:0 auto 10px;}
+@media (min-width:700px){
+  /* snelheidsmeter en bord verhuizen van de kaart naar de rode balk */
+  #speedBox{left:auto;right:190px;top:calc(env(safe-area-inset-top) + 8px);bottom:auto;flex-direction:row;align-items:center;gap:8px;z-index:530;}
+  #limitSign{width:46px;height:46px;font-size:20px;border-width:5px;}
+  #speedNow{padding:4px 10px;min-width:52px;}
+  #speedNow .v{font-size:20px;}
+  #navTop .dest{padding-right:170px;}
+}
 @media (orientation:landscape){
   #navTop .street{font-size:20px;}
   #navBottom .btn{padding:5px 4px 7px;font-size:12px;}
@@ -628,7 +636,7 @@ function pendingStops() { return state.stops.filter(s => s.status === 'pending' 
 
 async function rebuildRoute(allowOptimize) {
   const pend = pendingStops();
-  state.routeGeom = null; state.legInfo = []; state.optSaving = 0;
+  state.routeGeom = null; state.legInfo = []; state.optSaving = 0; state.routeDist = 0;
   if (!pend.length) { drawRoute(); return; }
   const start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
   const pts = [...start, ...pend];
@@ -654,6 +662,7 @@ async function rebuildRoute(allowOptimize) {
     const pts2 = [...(lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : []), ...pend2];
     if (pts2.length >= 2) {
       const route = await osrmRoute(pts2, 'false'); // alleen tijden, geen geometrie
+      state.routeDist = route.distance;
       // cumulatieve rijtijd per pending stop
       // met GPS-start: leg 0 = huidige positie -> stop 0
       // zonder GPS-start: stop 0 is het routebegin (cum 0), leg i-1 = stop i-1 -> stop i
@@ -1167,15 +1176,20 @@ function updateNavCard() {
     `Stop ${done + 1}/${total} · ${cur.postcode} ${cur.city} · slot ${cur.window}` +
     (cur.steeg ? ' · 🚶 STEEG +' + cur.steegOther : '') +
     (cur.afhaal ? ' · 📦 AFHAAL' : '') +
+    (state.routeDist ? ` · ${(state.routeDist / 1000).toFixed(1)} km route` : '') +
     (last ? ` · klaar ±${new Date(Date.now() + last.cumDur * 1000).toTimeString().slice(0, 5)}` : '') +
     (state.optSaving ? ` · opt. -${state.optSaving} min` : '');
   const li = state.legInfo.find(l => l.stop === cur);
   $('navEta').textContent = li ? fmtEta(li.cumDur) : '';
   if (!lastPos) $('navDist').firstChild.textContent = '—';
-  const next = state.stops.filter(s => s.status === 'pending')[1];
-  if (next) {
+  const pendList = state.stops.filter(s => s.status === 'pending');
+  const fmtN = n => `${n.street} ${n.huisnr}${n.toevoeging ? ' ' + n.toevoeging.replace(/^-/, '') : ''} (nr ${seqLabel(n)})`;
+  const nxt = [];
+  if (pendList[1]) nxt.push(fmtN(pendList[1]));
+  if (pendList[2] && window.innerWidth >= 700) nxt.push(fmtN(pendList[2]));
+  if (nxt.length) {
     $('nextRow').style.display = 'block';
-    $('nextRow').textContent = `Daarna: ${next.street} ${next.huisnr}${next.toevoeging ? ' ' + next.toevoeging.replace(/^-/, '') : ''} · ${next.city} · nr ${seqLabel(next)}`;
+    $('nextRow').textContent = 'Daarna: ' + nxt.join('   →   ');
   } else $('nextRow').style.display = 'none';
   updatePkgWarn();
 }
