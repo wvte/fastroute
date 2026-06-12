@@ -20,6 +20,7 @@
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;height:100%;font-family:-apple-system,'SF Pro',Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);overscroll-behavior:none;}
+body{height:100dvh;} /* geen dode witte balk onder de knoppen op iOS */
 .screen{display:none;height:100%;flex-direction:column;}
 .screen.active{display:flex;}
 header.bar{background:var(--blue);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 12px;font-size:20px;font-weight:800;display:flex;align-items:center;gap:10px;flex:0 0 auto;border-bottom:4px solid var(--accent);}
@@ -61,9 +62,9 @@ header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
 #navBottom .btn{font-size:15px;font-weight:800;padding:10px 4px 12px;line-height:1.15;border-radius:16px;}
 #navBottom .btn .ic{display:block;font-size:24px;margin-bottom:3px;}
 .fab{position:absolute;z-index:500;background:#fff;border:none;border-radius:50%;width:54px;height:54px;font-size:24px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;}
-#fabCenter{right:12px;bottom:110px;}
-#fabZoomIn{right:12px;bottom:240px;}
-#fabZoomOut{right:12px;bottom:175px;}
+#fabCenter{right:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);}
+#fabZoomIn{right:12px;bottom:calc(env(safe-area-inset-bottom) + 252px);}
+#fabZoomOut{right:12px;bottom:calc(env(safe-area-inset-bottom) + 187px);}
 /* panels */
 .panel{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:none;}
 .panel.open{display:flex;flex-direction:column;justify-content:flex-end;}
@@ -103,6 +104,8 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 .hnr-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;}
 .mk.ooo{border:3px solid var(--red);}
 .mk.steeg{border:3px solid var(--green);}
+.mk.multi{background:#6a1b9a;}
+.stop-row.multi .num{background:#6a1b9a;}
 #pkgWarn{position:absolute;left:0;right:0;z-index:520;background:#10141a;color:var(--accent);font-size:17px;font-weight:800;padding:10px 14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 #arrivePop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:850;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 26px;text-align:center;min-width:230px;border:4px solid var(--green);}
 #arrivePop.warn{border-color:var(--red);}
@@ -111,7 +114,7 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 #arrivePop .apPkg{font-size:16px;margin-top:10px;background:#eef3f9;border-radius:10px;padding:8px;font-weight:700;}
 #arrivePop.warn .apPkg{background:#fdeBe9;color:var(--red);}
 #arrivePop .apX{margin-top:12px;width:100%;border:none;border-radius:12px;background:var(--grey);color:#fff;font-size:16px;font-weight:700;padding:10px;}
-#speedBox{position:absolute;left:12px;bottom:110px;z-index:500;display:none;flex-direction:column;align-items:center;gap:6px;}
+#speedBox{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);z-index:500;display:none;flex-direction:column;align-items:center;gap:6px;}
 #limitSign{display:none;width:62px;height:62px;border-radius:50%;background:#fff;border:7px solid #d63b2f;color:#10141a;font-size:26px;font-weight:900;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);}
 #speedNow{background:#fff;border-radius:14px;padding:6px 12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:62px;}
 #speedNow .v{font-size:26px;font-weight:900;line-height:1;}
@@ -126,7 +129,8 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   #navBottom .btn{padding:5px 4px 7px;font-size:12px;}
   #navBottom .btn .ic{font-size:17px;margin-bottom:1px;}
   .ic svg{width:19px;height:19px;}
-  #fabCenter{bottom:90px;} #fabZoomOut{bottom:155px;} #fabZoomIn{bottom:220px;}
+  #fabCenter{bottom:calc(env(safe-area-inset-bottom) + 78px);} #fabZoomOut{bottom:calc(env(safe-area-inset-bottom) + 143px);} #fabZoomIn{bottom:calc(env(safe-area-inset-bottom) + 208px);}
+  #speedBox{bottom:calc(env(safe-area-inset-bottom) + 78px);}
 }
 </style>
 </head>
@@ -722,11 +726,11 @@ function drawStops() {
   state.stops.forEach(s => {
     if (!s.lat) return;
     const isCur = s === cur;
-    const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steeg ? ' steeg' : '');
+    const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steeg ? ' steeg' : (s.seqs ? ' multi' : ''));
     const size = isCur ? 44 : 30;
     const icon = L.divIcon({
       className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-      html: `<div class="mk ${cls}" style="width:${size}px;height:${size}px${s.seqs ? ';font-size:11px' : ''}">${s.status === 'done' ? '✓' : markerLabel(s)}</div>`
+      html: `<div class="mk ${cls}" style="width:${size}px;height:${size}px">${s.status === 'done' ? '✓' : markerLabel(s)}</div>`
     });
     const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: isCur ? 1000 : 0 }).addTo(map);
     m.on('click', () => openStopMenu(state.stops.indexOf(s)));
@@ -865,8 +869,8 @@ function onPos(p) {
    (bijv. "pakket 39 & 40"). Afhaalopdrachten worden nooit samengevoegd. */
 function seqLabel(s) { return s.seqs ? s.seqs.join(' & ') : String(s.seq); }
 function markerLabel(s) {
-  if (!s.seqs) return s.seq;
-  return s.seqs.length === 2 ? s.seqs.join('&') : s.seqs[0] + '+' + (s.seqs.length - 1);
+  // alleen het eerste nummer in het bolletje; details staan in de balk bovenin
+  return s.seqs ? s.seqs[0] : s.seq;
 }
 function mergeDuplicateStops() {
   const byKey = new Map(), out = [];
@@ -941,7 +945,7 @@ function linkSteeg(i) {
   if (j === -1) { alert('Stop nr ' + q + ' niet gevonden (of al afgerond).'); return; }
   const b = state.stops[j]; // b = ingevoerde stop = juiste ingang, daar bezorgen
   if (!confirm('Steeg-koppeling maken?\n\n' +
-    a.street + ' ' + a.huisnr + ' (nr ' + seqLabel(a) + ')\n+ ' + b.street + ' ' + b.huisnr + ' (nr ' + seqLabel(b) + ')\n\nSamen bezorgen bij: ' + b.street + ' ' + b.huisnr)) return;
+    a.street + ' ' + a.huisnr + ' (nr ' + seqLabel(a) + ')\n+ ' + b.street + ' ' + b.huisnr + ' (nr ' + seqLabel(b) + ')\n\nSamen bezorgen bij ' + b.street + ' ' + b.huisnr + ', op de plek van stop ' + seqLabel(b) + ' in de route.')) return;
   const seqs = [...(a.seqs || [a.seq]), ...(b.seqs || [b.seq])].sort((x, y) => (+x || 1e9) - (+y || 1e9));
   const comb = Object.assign({}, b, {
     seqs, seq: seqs[0], steeg: true,
@@ -949,7 +953,9 @@ function linkSteeg(i) {
     steegParts: [JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b))],
     sender: [a.sender, b.sender].filter(Boolean).join(' + ')
   });
-  const pos = Math.min(i, j); // op de vroegste plek in de route
+  // de combi neemt de plek van b in de route over: daar ligt de route
+  // goed langs de ingang; de pin van a staat aan een onbereikbare kant
+  const pos = j - (i < j ? 1 : 0);
   state.stops = state.stops.filter(s => s !== a && s !== b);
   state.stops.splice(pos, 0, comb);
   afterStopChange(true);
@@ -1011,11 +1017,11 @@ let popStop = null;
 const nseq = s => (typeof s.seq === 'number' ? s.seq : Infinity);
 function minPendingSeq() { // laagste 'gewone' pakketnummer dat nog moet
   let m = Infinity;
-  for (const s of state.stops) if (s.status === 'pending' && nseq(s) < 900 && nseq(s) < m) m = nseq(s);
+  for (const s of state.stops) if (s.status === 'pending' && !s.steeg && nseq(s) < 900 && nseq(s) < m) m = nseq(s);
   return m;
 }
 function outOfOrderSet() {
-  const pend = state.stops.filter(s => s.status === 'pending' && s.lat && nseq(s) !== Infinity && nseq(s) < 900);
+  const pend = state.stops.filter(s => s.status === 'pending' && s.lat && nseq(s) !== Infinity && nseq(s) < 900 && !s.steeg);
   const sorted = [...pend].sort((a, b) => nseq(a) - nseq(b));
   const set = new Set();
   pend.forEach((s, i) => { if (sorted[i] !== s) set.add(s); });
@@ -1049,15 +1055,27 @@ function hideArrivePop() { $('arrivePop').style.display = 'none'; }
 function updatePkgWarn() {
   const cur = currentStop();
   const el = $('pkgWarn');
-  if (cur && cur.steeg) {
-    el.innerHTML = `🚶 STEEG · PAK PAKKETTEN NR ${seqLabel(cur)} · hier ook: ${cur.steegOther}`;
-    el.style.display = 'block';
-    el.style.top = $('navTop').offsetHeight + 'px';
-    return;
-  }
-  if (cur && nseq(cur) !== Infinity && nseq(cur) !== minPendingSeq()) {
+  let html = null, bg = '#10141a', fg = 'var(--accent)';
+  if (cur) {
     const mps = minPendingSeq();
-    el.innerHTML = `📦 PAK ${cur.seqs ? 'PAKKETTEN' : 'PAKKET'} NR ${seqLabel(cur)}` + (nseq(cur) >= 900 ? ' (900-SERIE)' : '') + (cur.sender ? ` (${cur.sender})` : '') + (mps !== Infinity ? ` — niet nr ${mps}` : '');
+    if (cur.steeg) {
+      html = `🚶 STEEG · PAK PAKKETTEN NR ${seqLabel(cur)} · hier ook: ${cur.steegOther}`;
+      bg = 'var(--green)'; fg = '#fff';
+    } else if (nseq(cur) !== Infinity && nseq(cur) !== mps) {
+      html = `📦 PAK ${cur.seqs ? 'PAKKETTEN' : 'PAKKET'} NR ${seqLabel(cur)}` +
+        (nseq(cur) >= 900 ? ' (900-SERIE)' : '') + (cur.sender ? ` (${cur.sender})` : '') +
+        (mps !== Infinity ? ` — niet nr ${mps}` : '');
+    } else if (cur.seqs) {
+      html = `📦 ${cur.seqs.length} PAKKETTEN OP DIT ADRES · NR ${seqLabel(cur)}`;
+      bg = '#6a1b9a'; fg = '#fff';
+    } else if (cur.afhaal) {
+      html = '📤 AFHAALOPDRACHT · pakket meenemen van de klant';
+      bg = 'var(--accent)'; fg = '#10141a';
+    }
+  }
+  if (html) {
+    el.innerHTML = html;
+    el.style.background = bg; el.style.color = fg;
     el.style.display = 'block';
     el.style.top = $('navTop').offsetHeight + 'px';
   } else el.style.display = 'none';
@@ -1192,7 +1210,7 @@ function renderStopList() {
   $('stopsTitle').innerHTML = `Stops <span class="badge orange">${remaining} te gaan</span>`;
   state.stops.forEach((s, i) => {
     const row = document.createElement('div');
-    row.className = 'stop-row ' + s.status + (s === cur ? ' current' : '');
+    row.className = 'stop-row ' + s.status + (s === cur ? ' current' : '') + (s.seqs && !s.steeg ? ' multi' : '');
     const li = state.legInfo.find(l => l.stop === s);
     row.innerHTML = `<div class="num">${s.status === 'done' ? '✓' : s.status === 'skipped' ? '⏭' : s.seq}</div>
       <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}</div>
