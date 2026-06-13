@@ -1384,7 +1384,11 @@ function arrive(stop) {
 
 /* ---------- NAVIGATIEKAART (bovenbalk) ---------- */
 function fmtEta(sec) {
-  const t = new Dfunction updateNavCard() {
+  const t = new Date(sec * 1000);
+  return t.getUTCHours() ? `${t.getUTCHours()}u${String(t.getUTCMinutes()).padStart(2,'0')}` : `${t.getUTCMinutes()} min`;
+}
+
+function updateNavCard() {
   const cur = currentStop();
   const total = state.stops.length;
   const done = state.stops.filter(s => s.status !== 'pending').length;
@@ -1617,8 +1621,120 @@ setInterval(() => { if (currentStop() && $('scr-nav').classList.contains('active
     $('resumeInfo').textContent = `Rit ${saved.ride.rit} · ${saved.ride.bezorger} · ${done}/${saved.stops.length} stops gedaan`;
   }
 })();
+
+
+const TURN_ICONS = { 'turn-right':'↱', 'turn-left':'↰', 'turn-sharp-right':'⤷', 'turn-sharp-left':'⤶',
+  'turn-slight-right':'↗', 'turn-slight-left':'↖', 'uturn':'↩', 'roundabout':'⟳', 'merge':'↑', 'depart':'↑', 'arrive':'🏁' };
+function updateTurnRow() {
+  if (!lastPos || !state.routeSteps.length) { $('turnRow').style.display = 'none'; return; }
+  let best = null, bestD = Infinity;
+  for (const step of state.routeSteps) {
+    if (!step.maneuver || step.maneuver.type === 'depart') continue;
+    if (step.maneuver.location) {
+      const d = hav(lastPos, { lat: step.maneuver.location[1], lon: step.maneuver.location[0] });
+      if (d < bestD) { bestD = d; best = step; }
+    }
+  }
+  if (!best || bestD > 3000) { $('turnRow').style.display = 'none'; return; }
+  const modifier = (best.maneuver.modifier || '').replace(/ /g, '-');
+  const type = best.maneuver.type === 'turn' ? 'turn-' + modifier : best.maneuver.type;
+  const icon = TURN_ICONS[type] || TURN_ICONS['turn-' + modifier] || '↑';
+  const dist = bestD > 950 ? (bestD / 1000).toFixed(1) + ' km' : Math.round(bestD) + ' m';
+  const name = best.name ? best.name : '';
+  $('turnArrow').textContent = icon;
+  $('turnText').textContent = `Over ${dist}${name ? ' → ' + name : ''}`;
+  $('turnRow').style.display = 'flex';
+}
+
+/* ---------- ADRESNOTITIES ---------- */
+function noteKey(s) { return s.postcode + '|' + s.huisnr + (s.toevoeging ? '|' + s.toevoeging : ''); }
+function getAllNotes() { try { return JSON.parse(localStorage.getItem(NOTES_KEY) || '{}'); } catch { return {}; } }
+function saveAllNotes(d) { try { localStorage.setItem(NOTES_KEY, JSON.stringify(d)); } catch {} }
+function getNote(s) { const d = getAllNotes(); return d[noteKey(s)] || null; }
+let notesTargetIdx = -1;
+function openNotes(i) {
+  notesTargetIdx = i;
+  const s = state.stops[i];
+  $('notesEditTitle').textContent = `${s.street} ${s.huisnr} — notities`;
+  renderNotesList(s);
+  openPanel('panel-notes');
+}
+function renderNotesList(s) {
+  const key = noteKey(s);
+  const all = getAllNotes();
+  const note = all[key];
+  const el = $('notesList');
+  if (note) {
+    el.innerHTML = `<div class="card" style="display:flex;justify-content:space-between;align-items:center">
+      <span>${note.replace(/\|/g, ' — ')}</span>
+      <button class="btn red small" onclick="deleteNote()">🗑</button>
+    </div>`;
+  } else {
+    el.innerHTML = '<div style="color:#8a93a0;font-size:14px;margin-bottom:8px">Nog geen notities voor dit adres.</div>';
+  }
+}
+function addNote() {
+  if (notesTargetIdx < 0) return;
+  const s = state.stops[notesTargetIdx];
+  const type = $('notesType').value;
+  const custom = $('notesCustom').value.trim();
+  const val = type + (custom ? '|' + custom : '');
+  const all = getAllNotes();
+  all[noteKey(s)] = val;
+  saveAllNotes(all);
+  $('notesCustom').value = '';
+  renderNotesList(s);
+  renderStopList();
+}
+function deleteNote() {
+  if (notesTargetIdx < 0) return;
+  const s = state.stops[notesTargetIdx];
+  const all = getAllNotes();
+  delete all[noteKey(s)];
+  saveAllNotes(all);
+  renderNotesList(s);
+  renderStopList();
+}
+
+/* ---------- DONKERE MODUS ---------- */
+function applyDark(on) {
+  document.body.classList.toggle('dark', on);
+  state.settings.darkMode = on;
+  $('swDark').classList.toggle('on', on);
+}
+function toggleDark() { applyDark(!state.settings.darkMode); persist(); }
+
+/* ---------- PER-RIJDER INSTELLINGEN ---------- */
+function saveDriverProfile() {
+  const name = $('driverName').value.trim();
+  if (!name) return;
+  const profile = {
+    notifyDist: state.settings.notifyDist,
+    radius: state.settings.radius,
+    darkMode: state.settings.darkMode,
+    headingUp: state.settings.headingUp
+  };
+  try { localStorage.setItem(PROFILE_KEY + '_' + name, JSON.stringify(profile)); } catch {}
+}
+function loadDriverProfile(name) {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY + '_' + name);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    Object.assign(state.settings, p);
+    syncSettingsUI();
+    applyDark(state.settings.darkMode);
+  } catch {}
+}
+
+/* ---------- MELDINGSAFSTAND ---------- */
+function setNotifyDist(v) {
+  state.settings.notifyDist = +v;
+  $('notifyVal').textContent = v;
+  persist();
+}
+
 </script>
 </body>
 </html>
-
-<!-- build 7 · smooth GPS · custom icon · auto-dismiss popup · heading-up · turn instruction · auto-depot · dark mode · DHL kleuren · dwell time · auto-zoom · adresnotities · per-rijder instellingen -->
+<!-- build 7 -->
