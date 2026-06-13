@@ -1236,9 +1236,11 @@ function _doShowArrivePop(s) {
     $('apPkg').innerHTML = `📤 AFHAALOPDRACHT<br><small style="font-weight:400">Pakket meenemen van klant</small>`;
     $('arrivePop').classList.remove('warn');
   } else {
-    $('apPkg').innerHTML = nseq(s) === Infinity
-      ? '📦 Handmatige stop'
-      : `📦 ${pkgLabel(s)}${s.sender ? '<br><small style="font-weight:400;color:#5b6470">' + s.sender + '</small>' : ''}`;
+    const pLabel = s.seqs
+      ? `📦 Pakketten nr ${s.seqs.join(' & ')}`
+      : (typeof s.seq === 'number' ? `📦 Pakket nr ${s.seq}` : '');
+    const sLabel = s.sender ? `<small style="font-weight:400;color:#5b6470">${s.sender}</small>` : '';
+    $('apPkg').innerHTML = pLabel + (pLabel && sLabel ? '<br>' : '') + sLabel;
     $('arrivePop').classList.remove('warn');
   }
   $('arrivePop').style.display = 'block';
