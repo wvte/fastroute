@@ -663,9 +663,14 @@ function renderRides() {
     const div = document.createElement('div');
     div.className = 'ride-item';
     div.onclick = () => chooseRide(i);
-    const afh = r.stops.filter(s => s.afhaal).length;
-    div.innerHTML = `<div><div class="rno">Rit ${r.rit}</div><div class="rname">${r.bezorger}</div>
-      <div class="rmeta">${r.stops.length} stops${afh ? ' · ' + afh + ' afhaal' : ''} · code ${r.code}</div></div><div class="arrow">›</div>`;
+    const pkgStops = r.stops.filter(s => !s.afhaal);
+    const afhStops = r.stops.filter(s => s.afhaal);
+    const uniqueAddr = new Set(pkgStops.map(s => s.postcode + '|' + s.huisnr + '|' + (s.toevoeging || '')));
+    const numStops = uniqueAddr.size + afhStops.length;
+    const numPkgs = r.stops.length;
+    div.innerHTML = `<div><div class="rno">Rit ${r.rit}</div>
+      <div class="rname">${r.bezorger}${r.bezorgerId ? ' (' + r.bezorgerId + ')' : ''}</div>
+      <div class="rmeta">${numStops} stops · ${numPkgs} pakket${numPkgs !== 1 ? 'ten' : ''}</div></div><div class="arrow">›</div>`;
     list.appendChild(div);
   });
   if (!list.children.length) list.innerHTML = '<div class="card">Geen rit gevonden.</div>';
@@ -1795,20 +1800,4 @@ function loadDriverProfile(bezorgerId) {
     const raw = localStorage.getItem(PROFILE_KEY + '_' + bezorgerId);
     if (!raw) return;
     const p = JSON.parse(raw);
-    Object.assign(state.settings, p);
-    syncSettingsUI();
-    applyDark(state.settings.darkMode);
-  } catch {}
-}
-
-/* ---------- MELDINGSAFSTAND ---------- */
-function setNotifyDist(v) {
-  state.settings.notifyDist = +v;
-  $('notifyVal').textContent = v;
-  persist();
-}
-
-</script>
-</body>
-</html>
-<!-- build 7 -->
+    Object.assign(st
