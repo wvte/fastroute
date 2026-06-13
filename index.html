@@ -1800,4 +1800,11 @@ function loadDriverProfile(bezorgerId) {
     const raw = localStorage.getItem(PROFILE_KEY + '_' + bezorgerId);
     if (!raw) return;
     const p = JSON.parse(raw);
-    Object.assign(st
+    Object.assign(state.settings, p);
+    syncSettingsUI();
+    applyDark(state.settings.darkMode);
+  } catch {}
+}
+</script>
+</body>
+</html>
