@@ -234,6 +234,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
     <div class="nIcon" id="notesIcon">⚠️</div>
     <div class="nTitle" id="notesTitle"></div>
     <div class="nText" id="notesText"></div>
+    <button class="nX" onclick="moreInfoNotesPop()" style="background:#ff6d00;margin-bottom:8px">Meer informatie</button>
     <button class="nX" onclick="hideNotesPop()">Begrepen</button>
   </div>
   <div id="map"></div>
@@ -285,9 +286,9 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <!-- PANEL: ADRESNOTITIES -->
 <div class="panel" id="panel-notes">
   <div class="sheet">
-    <h2><span id="notesEditTitle">Notitie adres</span><button class="x" onclick="closePanel('panel-notes')">✕</button></h2>
+    <h2><span id="notesEditTitle">Meldingen adres</span><button class="x" onclick="closePanel('panel-notes')">✕</button></h2>
     <div class="body" id="notesEditBody">
-      <div style="font-size:15px;color:#5b6470;margin-bottom:10px">Notities worden opgeslagen per adres en getoond bij aankomst.</div>
+      <div style="font-size:15px;color:#5b6470;margin-bottom:10px">Meldingen worden opgeslagen per adres en getoond bij aankomst.</div>
       <div id="notesList"></div>
       <div style="margin-top:14px">
         <select id="notesType" class="txt" style="margin-bottom:8px">
@@ -300,7 +301,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
           <option value="📍 Eigen notitie">📍 Eigen notitie</option>
         </select>
         <input class="txt" id="notesCustom" placeholder="Extra omschrijving (optioneel)">
-        <button class="btn green" onclick="addNote()">＋ Notitie opslaan</button>
+        <button class="btn green" onclick="addNote()">＋ Melding opslaan</button>
       </div>
     </div>
   </div>
@@ -1214,7 +1215,7 @@ function pkgLabel(s) {
 function showArrivePop(s) {
   // Toon adresnotitie alleen als er meerdere meldingen zijn (drempel >= 2)
   const note = getNote(s);
-  if (note && note.count >= 2) { showNotesPop(s, note.text); return; }
+  if (note && note.count >= noteThreshold(note.text)) { showNotesPop(s, note.text); return; }
   _doShowArrivePop(s);
 }
 function _doShowArrivePop(s) {
@@ -1242,18 +1243,34 @@ function _doShowArrivePop(s) {
   startArriveTimer();
   beep();
 }
-function showNotesPop(s, note) {
+function showNotesPop(s, noteText) {
   notesPending = s;
-  const parts = note.split('|');
-  $('notesIcon').textContent = parts[0].match(/^\S+/)[0]; // eerste emoji/woord
-  $('notesTitle').textContent = parts[0];
-  $('notesText').textContent = parts.slice(1).join(' ') || 'Let op bij dit adres!';
+  let title, detail;
+  if (noteText.includes(' — ')) {
+    const idx = noteText.indexOf(' — ');
+    title = noteText.substring(0, idx); detail = noteText.substring(idx + 3);
+  } else if (noteText.includes('|')) {
+    const idx = noteText.indexOf('|');
+    title = noteText.substring(0, idx); detail = noteText.substring(idx + 1);
+  } else { title = noteText; detail = ''; }
+  const emojiMatch = title.match(/^(\S+)\s*(.*)/);
+  $('notesIcon').textContent = emojiMatch ? emojiMatch[1] : '⚠️';
+  $('notesTitle').textContent = emojiMatch ? emojiMatch[2].trim() : title;
+  $('notesText').textContent = detail || 'Let op bij dit adres!';
   $('notesPop').style.display = 'block';
   beep();
 }
 function hideNotesPop() {
   $('notesPop').style.display = 'none';
   if (notesPending) { _doShowArrivePop(notesPending); notesPending = null; }
+}
+function moreInfoNotesPop() {
+  $('notesPop').style.display = 'none';
+  if (notesPending) {
+    const idx = state.stops.indexOf(notesPending);
+    notesPending = null;
+    if (idx >= 0) openNotes(idx);
+  }
 }
 function startArriveTimer() {
   if (arriveTimer) clearTimeout(arriveTimer);
@@ -1444,9 +1461,9 @@ function renderStopList() {
     const row = document.createElement('div');
     row.className = 'stop-row ' + s.status + (s === cur ? ' current' : '') + (s.seqs && !s.steeg ? ' multi' : '');
     const li = state.legInfo.find(l => l.stop === s);
-    const hasNote = !!getNote(s);
+    const hasNote = hasAnyNote(s);
     row.innerHTML = `<div class="num">${s.status === 'done' ? '✓' : s.status === 'skipped' ? '⏭' : s.seq}</div>
-      <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}${hasNote ? '<span class="note-dot" title="Notitie aanwezig"></span>' : ''}</div>
+      <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}${hasNote ? '<span class="note-dot" title="Melding aanwezig"></span>' : ''}</div>
       <div class="a2">${s.steeg ? '🚶 steeg (ook ' + s.steegOther + ') · ' : ''}${s.seqs ? '📦 ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · 📦 AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ⚠️ geen positie'}</div></div>
       <div class="eta">${s.status === 'pending' && li ? fmtEta(li.cumDur).replace('aank. ', '') : ''}</div>`;
     row.onclick = () => openStopMenu(i);
@@ -1482,7 +1499,7 @@ function openStopMenu(i) {
   } else {
     mk('↩️ Opnieuw inplannen', '', () => { s.status = 'pending'; afterStopChange(true); });
   }
-  mk((getNote(s) ? '⚠️ Notitie bewerken' : '📝 Notitie toevoegen'), 'grey', () => openNotes(i));
+  mk((hasAnyNote(s) ? '⚠️ Melding bewerken' : '📢 Melding toevoegen'), 'grey', () => openNotes(i));
   if (s.lat) mk('🗺 Open in Google Maps', 'grey', () => {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving`, '_blank');
   });
@@ -1628,27 +1645,70 @@ function updateTurnRow() {
 function noteKey(s) { return s.postcode + '|' + s.huisnr + (s.toevoeging ? '|' + s.toevoeging : ''); }
 function getAllNotes() { try { return JSON.parse(localStorage.getItem(NOTES_KEY) || '{}'); } catch { return {}; } }
 function saveAllNotes(d) { try { localStorage.setItem(NOTES_KEY, JSON.stringify(d)); } catch {} }
-function getNote(s) { const d = getAllNotes(); const raw = d[noteKey(s)]; if (!raw) return null; if (typeof raw === 'string') return { text: raw, count: 2 }; return raw; }
+function noteThreshold(text) {
+  if (!text) return 2;
+  // Invalide bewoner en eigen notitie zijn direct zichtbaar (drempel 1)
+  if (text.startsWith('\u267f') || text.startsWith('\ud83d\udccd')) return 1;
+  if (text.includes('Invalide') || text.includes('Eigen notitie')) return 1;
+  return 2;
+}
+function personalNoteKey(s) {
+  const ride = state.rides && state.rides[state.rideIdx];
+  const bid = (ride && ride.bezorgerId) || 'guest';
+  return '__p__' + bid + '__' + noteKey(s);
+}
+function getSharedNote(s) {
+  const d = getAllNotes(); const raw = d[noteKey(s)];
+  if (!raw) return null;
+  return typeof raw === 'string' ? { text: raw, count: 2, personal: false } : { ...raw, personal: false };
+}
+function getPersonalNote(s) {
+  const d = getAllNotes(); const raw = d[personalNoteKey(s)];
+  if (!raw) return null;
+  return typeof raw === 'string' ? { text: raw, count: 1, personal: true } : { ...raw, personal: true };
+}
+function getNote(s) {
+  // Geeft de melding terug die de popup triggert
+  const shared = getSharedNote(s);
+  if (shared && shared.count >= noteThreshold(shared.text)) return shared;
+  const personal = getPersonalNote(s);
+  if (personal) return personal;
+  return null;
+}
+function hasAnyNote(s) { return !!(getSharedNote(s) || getPersonalNote(s)); }
 let notesTargetIdx = -1;
 function openNotes(i) {
   notesTargetIdx = i;
   const s = state.stops[i];
-  $('notesEditTitle').textContent = `${s.street} ${s.huisnr} — notities`;
+  $('notesEditTitle').textContent = `${s.street} ${s.huisnr} — meldingen`;
   renderNotesList(s);
   openPanel('panel-notes');
 }
 function renderNotesList(s) {
-  const note = getNote(s);
   const el = $('notesList');
-  if (note) {
-    const countLabel = note.count >= 2 ? ` <span style="color:#e53935;font-weight:700">(${note.count}×)</span>` : '';
-    el.innerHTML = `<div class="card" style="display:flex;justify-content:space-between;align-items:center">
-      <span>${note.text}${countLabel}</span>
-      <button class="btn red small" onclick="deleteNote()">🗑</button>
+  let html = '';
+  const shared = getSharedNote(s);
+  if (shared) {
+    const thr = noteThreshold(shared.text);
+    const countLabel = shared.count >= 2
+      ? ` <span style="color:#e53935;font-weight:700">(${shared.count}×)</span>`
+      : shared.count >= thr ? '' : ` <span style="color:#8a93a0;font-size:12px">(nog ${thr - shared.count}× nodig voor popup)</span>`;
+    html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span>${shared.text}${countLabel}</span>
+      <button class="btn red small" onclick="deleteSharedNote()">🗑</button>
     </div>`;
-  } else {
-    el.innerHTML = '<div style="color:#8a93a0;font-size:14px;margin-bottom:8px">Nog geen notities voor dit adres.</div>';
   }
+  const personal = getPersonalNote(s);
+  if (personal) {
+    html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center;background:#fff8e1">
+      <span>${personal.text} <span style="color:#8a93a0;font-size:12px">🔒 persoonlijk</span></span>
+      <button class="btn red small" onclick="deletePersonalNote()">🗑</button>
+    </div>`;
+  }
+  if (!html) {
+    html = '<div style="color:#8a93a0;font-size:14px;margin-bottom:8px">Nog geen meldingen voor dit adres.</div>';
+  }
+  el.innerHTML = html;
 }
 function addNote() {
   if (notesTargetIdx < 0) return;
@@ -1656,24 +1716,34 @@ function addNote() {
   const type = $('notesType').value;
   const custom = $('notesCustom').value.trim();
   const text = type + (custom ? ' — ' + custom : '');
+  const isPersonal = type.includes('Eigen notitie');
   const all = getAllNotes();
-  const key = noteKey(s);
-  const existing = getNote(s);
+  const key = isPersonal ? personalNoteKey(s) : noteKey(s);
+  const existing = isPersonal ? getPersonalNote(s) : getSharedNote(s);
   if (existing && existing.text === text) {
-    all[key] = { text, count: existing.count + 1 };
+    all[key] = { text, count: existing.count + 1, personal: isPersonal };
   } else {
-    all[key] = { text, count: 1 };
+    all[key] = { text, count: 1, personal: isPersonal };
   }
   saveAllNotes(all);
   $('notesCustom').value = '';
   renderNotesList(s);
   renderStopList();
 }
-function deleteNote() {
+function deleteSharedNote() {
   if (notesTargetIdx < 0) return;
   const s = state.stops[notesTargetIdx];
   const all = getAllNotes();
   delete all[noteKey(s)];
+  saveAllNotes(all);
+  renderNotesList(s);
+  renderStopList();
+}
+function deletePersonalNote() {
+  if (notesTargetIdx < 0) return;
+  const s = state.stops[notesTargetIdx];
+  const all = getAllNotes();
+  delete all[personalNoteKey(s)];
   saveAllNotes(all);
   renderNotesList(s);
   renderStopList();
