@@ -13,11 +13,22 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <style>
 :root{
   --blue:#d40511; --accent:#ffcc00; --green:#1e9e4a; --red:#b00310; --grey:#8a93a0; --dark:#1c2733;
   --bg:#f7f6f3; --card:#ffffff; --text:#10141a;
 }
+/* Dark mode */
+body.dark{--bg:#0f1520;--card:#1a2235;--text:#e4eaf3;}
+body.dark header.bar{background:#8a0008;}
+body.dark .ride-item,body.dark .card{background:var(--card);color:var(--text);}
+body.dark #rideSearch{background:var(--card);color:var(--text);border-color:#2a3a55;}
+body.dark .panel .sheet,body.dark #arrivePop,body.dark #notesPop{background:var(--card);color:var(--text);}
+body.dark .stop-row,body.dark .sheet h2,body.dark .setrow{border-color:#2a3a55;}
+body.dark .stop-row.current{background:#1f2d1a;}
+body.dark input.txt,body.dark #addNote,body.dark #addPC,body.dark #addNR,body.dark #depotAddr{background:#0f1520;color:var(--text);border-color:#2a3a55;}
+body.dark #arrivePop .apPkg{background:#0f1520;}
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;height:100%;font-family:-apple-system,'SF Pro',Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);overscroll-behavior:none;}
 body{height:100dvh;} /* geen dode witte balk onder de knoppen op iOS */
@@ -104,8 +115,9 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 .hnr-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;}
 .mk.ooo{border:3px solid var(--red);}
 .mk.steeg{border:3px solid var(--green);}
-.mk.multi{background:#6a1b9a;}
-.stop-row.multi .num{background:#6a1b9a;}
+/* Multi-pakket: DHL geel i.p.v. paars */
+.mk.multi{background:var(--accent);}
+.stop-row.multi .num{background:var(--accent);color:#10141a;}
 #pkgWarn{position:absolute;left:0;right:0;z-index:520;background:#10141a;color:var(--accent);font-size:17px;font-weight:800;padding:10px 14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 #arrivePop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:850;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 26px;text-align:center;min-width:230px;border:4px solid var(--green);}
 #arrivePop.warn{border-color:var(--red);}
@@ -113,7 +125,19 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 #arrivePop .apStreet{font-size:17px;font-weight:700;margin-top:4px;}
 #arrivePop .apPkg{font-size:16px;margin-top:10px;background:#eef3f9;border-radius:10px;padding:8px;font-weight:700;}
 #arrivePop.warn .apPkg{background:#fdeBe9;color:var(--red);}
-#arrivePop .apX{margin-top:12px;width:100%;border:none;border-radius:12px;background:var(--grey);color:#fff;font-size:16px;font-weight:700;padding:10px;}
+#arrivePop .apX{margin-top:10px;width:100%;border:none;border-radius:12px;background:var(--grey);color:#fff;font-size:16px;font-weight:700;padding:10px;position:relative;overflow:hidden;}
+#arriveProgBar{position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,.25);pointer-events:none;transition:width linear;}
+/* Volgende afslag */
+#turnRow{flex-basis:100%;font-size:14px;font-weight:700;background:rgba(0,0,0,.28);border-radius:8px;padding:5px 9px;margin-top:4px;display:none;align-items:center;gap:7px;}
+#turnRow .ta{font-size:20px;flex:0 0 auto;}
+/* Adresnotitie popup */
+#notesPop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:860;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 24px;text-align:center;min-width:240px;max-width:88vw;border:4px solid #ff6d00;display:none;}
+#notesPop .nIcon{font-size:44px;line-height:1;}
+#notesPop .nTitle{font-size:19px;font-weight:800;margin:6px 0 4px;}
+#notesPop .nText{font-size:15px;color:#5b6470;margin-bottom:12px;}
+#notesPop .nX{width:100%;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:16px;font-weight:700;padding:10px;cursor:pointer;}
+/* Notitie-badge op stop-rij */
+.note-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff6d00;margin-left:5px;vertical-align:middle;}
 #speedBox{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);z-index:500;display:none;flex-direction:column;align-items:center;gap:6px;}
 #limitSign{display:none;width:62px;height:62px;border-radius:50%;background:#fff;border:7px solid #d63b2f;color:#10141a;font-size:26px;font-weight:900;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);}
 #speedNow{background:#fff;border-radius:14px;padding:6px 12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:62px;}
@@ -192,6 +216,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
     </div>
     <div class="dist" id="navDist">—<small id="navEta"></small></div>
     <div id="nextRow" style="display:none"></div>
+    <div id="turnRow"><span class="ta" id="turnArrow">↑</span><span id="turnText"></span></div>
   </div>
   <div id="pkgWarn" style="display:none"></div>
   <div id="accWarn" onclick="this.style.display='none'"></div>
@@ -203,7 +228,13 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
     <div class="apNum" id="apNum"></div>
     <div class="apStreet" id="apStreet"></div>
     <div class="apPkg" id="apPkg"></div>
-    <button class="apX" onclick="hideArrivePop()">Sluiten</button>
+    <button class="apX" id="apXBtn" onclick="hideArrivePop()">Sluiten ✕<div id="arriveProgBar" style="width:100%"></div></button>
+  </div>
+  <div id="notesPop">
+    <div class="nIcon" id="notesIcon">⚠️</div>
+    <div class="nTitle" id="notesTitle"></div>
+    <div class="nText" id="notesText"></div>
+    <button class="nX" onclick="hideNotesPop()">Begrepen</button>
   </div>
   <div id="map"></div>
   <button class="fab" id="fabZoomIn" onclick="map.zoomIn()">＋</button>
@@ -251,12 +282,40 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   </div>
 </div>
 
+<!-- PANEL: ADRESNOTITIES -->
+<div class="panel" id="panel-notes">
+  <div class="sheet">
+    <h2><span id="notesEditTitle">Notitie adres</span><button class="x" onclick="closePanel('panel-notes')">✕</button></h2>
+    <div class="body" id="notesEditBody">
+      <div style="font-size:15px;color:#5b6470;margin-bottom:10px">Notities worden opgeslagen per adres en getoond bij aankomst.</div>
+      <div id="notesList"></div>
+      <div style="margin-top:14px">
+        <select id="notesType" class="txt" style="margin-bottom:8px">
+          <option value="⚠️ Gevaarlijke hond">⚠️ Gevaarlijke hond</option>
+          <option value="📦 Afgesproken plek">📦 Afgesproken plek</option>
+          <option value="♿ Invalide bewoner">♿ Invalide bewoner</option>
+          <option value="🔔 Niet aanbellen">🔔 Niet aanbellen</option>
+          <option value="🐕 Hond los in tuin">🐕 Hond los in tuin</option>
+          <option value="🚪 Bel lang aanhouden">🚪 Bel lang aanhouden</option>
+          <option value="📍 Eigen notitie">📍 Eigen notitie</option>
+        </select>
+        <input class="txt" id="notesCustom" placeholder="Extra omschrijving (optioneel)">
+        <button class="btn green" onclick="addNote()">＋ Notitie opslaan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- PANEL: INSTELLINGEN -->
 <div class="panel" id="panel-settings">
   <div class="sheet">
     <h2>Instellingen<button class="x" onclick="closePanel('panel-settings')">✕</button></h2>
     <div class="body">
+      <div class="setrow"><span>Rijdersnaam (profiel)</span><input class="txt" id="driverName" placeholder="jouw naam" style="width:46%;margin:0;padding:8px" onchange="saveDriverProfile()"></div>
+      <div class="setrow"><span>Donkere modus</span><button class="switch" id="swDark" onclick="toggleDark()"></button></div>
       <div class="setrow"><span>Aankomstradius: <b id="radVal"></b> m</span><input type="range" min="15" max="75" step="5" id="radius" oninput="setRadius(this.value)"></div>
+      <div class="setrow"><span>Meldingsafstand: <b id="notifyVal"></b> m</span><input type="range" min="20" max="200" step="10" id="notifyDist" oninput="setNotifyDist(this.value)"></div>
+      <div class="setrow"><span>Kaart meedraaien (heading-up)</span><button class="switch" id="swHeading" onclick="toggleSet('headingUp','swHeading')"></button></div>
       <div class="setrow"><span>Automatisch afvinken (GPS)</span><button class="switch" id="swAuto" onclick="toggleSet('autoAdvance','swAuto')"></button></div>
       <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
@@ -290,19 +349,34 @@ const $ = id => document.getElementById(id);
 const LS = 'routefast_v1';
 const GEOCACHE_KEY = 'routefast_geocache';
 
+const NOTES_KEY = 'routefast_notes_v1';
+const DWELL_KEY = 'routefast_dwell_v1';
+const PROFILE_KEY = 'routefast_profile_v1';
+
 let state = {
-  rides: [],            // alle geparste ritten uit de PDF
-  rideIdx: -1,          // gekozen rit
-  stops: [],            // actieve stops (met lat/lon/status)
+  rides: [],
+  rideIdx: -1,
+  stops: [],
   settings: { radius: 35, autoAdvance: true, optimize: true, sound: true, houseNumbers: true,
+    headingUp: true, notifyDist: 60, darkMode: false,
     depot: { label: 'Wattstraat 3, Raalte', lat: null, lon: null } },
-  routeGeom: null,      // polyline van OSRM
-  legInfo: [],          // per pending stop: {dur, dist} cumulatief
-  optSaving: 0
+  routeGeom: null,
+  routeSteps: [],       // OSRM stappen voor volgende afslag
+  legInfo: [],
+  optSaving: 0,
+  routeDist: 0
 };
-let map = null, gpsMarker = null, accCircle = null, stopMarkers = [], routeLine = null, hnrLayer = null;
-let watchId = null, lastPos = null, follow = true, wakeLock = null;
-let arriveLock = 0; // debounce auto-afvinken
+let map = null, gpsMarker = null, gpsIconUrl = null, accCircle = null, stopMarkers = [], routeLine = null, hnrLayer = null;
+let watchId = null, lastPos = null, lastHeading = null, follow = true, wakeLock = null;
+let arriveLock = 0;
+// Smooth GPS interpolation
+let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, interpRaf = null;
+// Dwell time tracking
+let dwellStart = null, dwellStop = null;
+// Arrive popup auto-dismiss
+let arriveTimer = null, arriveProgRaf = null;
+// Notes popup
+let notesPending = null;
 
 /* ---------- PDF PARSER (getest op DHL laadlijsten) ---------- */
 function groupRows(items) {
@@ -432,11 +506,9 @@ function hav(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-async function osrmRoute(points, overview = 'full') {
-  // points: [{lat,lon}], volgorde behouden. Profiel 'driving' = autoniveau:
-  // geen fietspaden, voetpaden of wegen die met paaltjes zijn afgesloten.
+async function osrmRoute(points, overview = 'full', withSteps = false) {
   const cs = points.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=false`);
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`);
   if (!r.ok) throw new Error('OSRM ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM: ' + j.code);
@@ -490,7 +562,7 @@ function optimizeOrder(n, M, maxShift = 3) {
    Zo werken de terugknop en de terug-swipe op iOS gewoon:
    #/start -> #/ritten -> #/route -> #/route/stops enz.            */
 const ROUTES = { 'scr-upload': 'start', 'scr-rides': 'ritten', 'scr-loading': 'laden', 'scr-nav': 'route' };
-const PANELS = { 'panel-stops': 'stops', 'panel-stopmenu': 'stopmenu', 'panel-addstop': 'nieuwe-stop', 'panel-settings': 'instellingen' };
+const PANELS = { 'panel-stops': 'stops', 'panel-stopmenu': 'stopmenu', 'panel-addstop': 'nieuwe-stop', 'panel-notes': 'notities', 'panel-settings': 'instellingen' };
 let navInternal = false;
 
 function activeScreen() {
@@ -695,12 +767,15 @@ async function updateNavLine() {
   state.routeGeom = null;
   if (cur && cur.lat && origin) {
     try {
-      const route = await osrmRoute([origin, cur], 'full');
+      const route = await osrmRoute([origin, cur], 'full', true);
       state.routeGeom = route.geometry;
+      // Volgende afslag uit OSRM stappen
+      state.routeSteps = [];
+      if (route.legs && route.legs[0] && route.legs[0].steps) {
+        state.routeSteps = route.legs[0].steps;
+      }
       navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
       if (cur === depotPoint()) depotDur = route.duration;
-      // ETA's live bijstellen: verse rijtijd naar de huidige stop,
-      // alle volgende stops schuiven evenveel mee
       if (state.legInfo.length && state.legInfo[0].stop === cur) {
         const delta = route.duration - state.legInfo[0].cumDur;
         if (Math.abs(delta) > 5) state.legInfo.forEach(l => { l.cumDur += delta; });
@@ -711,10 +786,27 @@ async function updateNavLine() {
   updateNavCard();
 }
 
+/* ---------- CUSTOM GPS ICON (optioneel: plaats gps-icon.png in de app-map) ---------- */
+function loadGpsIcon() {
+  const img = new Image();
+  img.onload = () => { gpsIconUrl = 'gps-icon.png'; if (gpsMarker) updateGpsMarkerIcon(); };
+  img.onerror = () => { gpsIconUrl = null; };
+  img.src = 'gps-icon.png';
+}
+function updateGpsMarkerIcon() {
+  if (!gpsMarker) return;
+  if (gpsIconUrl) {
+    gpsMarker.setIcon(L.icon({ iconUrl: gpsIconUrl, iconSize: [36, 36], iconAnchor: [18, 18] }));
+  } else {
+    gpsMarker.setIcon(L.divIcon({ className: 'mk-gps', iconSize: [20, 20], iconAnchor: [10, 10] }));
+  }
+}
+
 /* ---------- KAART ---------- */
 function initMap() {
   if (map) { drawStops(); drawRoute(); return; }
-  map = L.map('map', { zoomControl: false, attributionControl: true });
+  loadGpsIcon();
+  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, bearing: 0 });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© OpenStreetMap'
   }).addTo(map);
@@ -805,9 +897,26 @@ let spdEma = null, lastSpdFix = null, accBad = 0, accWarned = false;
 let limitVal = null, limitPos = null, limitTs = 0, limitBusy = false;
 
 function onPos(p) {
-  lastPos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy };
+  const newPos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy };
+  // Smooth GPS interpolation: beweeg vloeiend van vorige naar nieuwe positie
+  if (lastPos && map) {
+    interpFrom = { lat: lastPos.lat, lon: lastPos.lon };
+    interpTo = { lat: newPos.lat, lon: newPos.lon };
+    interpStart = Date.now();
+    interpDur = Math.min(3000, Math.max(500, (p.timestamp - (lastPos._ts || p.timestamp)) * 0.8));
+    if (!interpRaf) smoothMarker();
+  }
+  lastPos = newPos;
+  lastPos._ts = p.timestamp || Date.now();
 
-  // exacte locatie uit? iOS geeft dan structureel ~1000+ m nauwkeurigheid
+  // heading (rijrichting) — voor heading-up kaart
+  if (p.coords.heading != null && !isNaN(p.coords.heading)) {
+    lastHeading = p.coords.heading;
+    if (map && state.settings.headingUp && follow && typeof map.setBearing === 'function') {
+      map.setBearing(lastHeading);
+    }
+  }
+
   if (p.coords.accuracy > 150) {
     if (++accBad >= 3 && !accWarned) {
       accWarned = true;
@@ -817,7 +926,6 @@ function onPos(p) {
     }
   } else { accBad = 0; $('accWarn').style.display = 'none'; }
 
-  // live snelheid: GPS-snelheid, anders afgeleid uit opeenvolgende posities
   let v = (p.coords.speed != null && p.coords.speed >= 0) ? p.coords.speed : null;
   const now = Date.now();
   if (v === null && lastSpdFix) {
@@ -831,46 +939,133 @@ function onPos(p) {
     $('speedBox').style.display = 'flex';
     $('spdV').textContent = kmh;
     $('speedNow').classList.toggle('over', limitVal !== null && kmh > limitVal + 3);
+    // Dwell time: bijhouden hoe lang je stilstaat per adres
+    trackDwell(kmh);
+    // Auto-zoom op bochten
+    autoZoom();
   }
   refreshSpeedLimit();
 
   if (!map) return;
   if (!gpsMarker) {
-    gpsMarker = L.marker([lastPos.lat, lastPos.lon], {
-      icon: L.divIcon({ className: 'mk-gps', iconSize: [20, 20], iconAnchor: [10, 10] }), zIndexOffset: 2000
-    }).addTo(map);
+    const icon = gpsIconUrl
+      ? L.icon({ iconUrl: gpsIconUrl, iconSize: [36, 36], iconAnchor: [18, 18] })
+      : L.divIcon({ className: 'mk-gps', iconSize: [20, 20], iconAnchor: [10, 10] });
+    gpsMarker = L.marker([lastPos.lat, lastPos.lon], { icon, zIndexOffset: 2000, rotationOrigin: 'center' }).addTo(map);
     accCircle = L.circle([lastPos.lat, lastPos.lon], { radius: lastPos.acc, weight: 1, fillOpacity: .08 }).addTo(map);
+    interpFrom = null; // geen interpolatie bij eerste fix
   } else {
-    gpsMarker.setLatLng([lastPos.lat, lastPos.lon]);
     accCircle.setLatLng([lastPos.lat, lastPos.lon]).setRadius(lastPos.acc);
   }
-  if (follow) map.panTo([lastPos.lat, lastPos.lon]);
+  if (lastHeading != null && gpsMarker.setRotationAngle) gpsMarker.setRotationAngle(lastHeading);
+
+  if (follow && map) {
+    // heading-up: paneer zodat de positie iets boven het midden staat (meer vooruit zien)
+    if (state.settings.headingUp && typeof map.setBearing === 'function') {
+      map.panTo([lastPos.lat, lastPos.lon]);
+    } else {
+      map.panTo([lastPos.lat, lastPos.lon]);
+    }
+  }
   if (gpsLost) { gpsLost = false; updateNavCard(); }
+
   const cur = currentStop();
-  // navigatielijn verversen: bij stopwissel direct, anders na 200 m / min. 10 s
   if (cur && cur.lat && (navLineStop !== cur ||
-      (navLineOrigin && hav(lastPos, navLineOrigin) > 200 && Date.now() - navLineTs > 10000))) {
+      (navLineOrigin && hav(lastPos, navLineOrigin) > 150 && Date.now() - navLineTs > 8000))) {
     navLineStop = cur; navLineTs = Date.now();
     updateNavLine();
   }
+  // Depot navigatie ook verversen onderweg
   if (!cur && state.stops.length && !depotArrived && depotPoint()) {
     const dep = depotPoint();
     const dd = hav(lastPos, dep);
     $('navDist').firstChild.textContent = dd > 950 ? (dd / 1000).toFixed(1) + ' km' : Math.round(dd) + ' m';
+    if (navLineStop !== dep && (navLineOrigin && hav(lastPos, navLineOrigin) > 150 && Date.now() - navLineTs > 8000)) {
+      navLineTs = Date.now(); updateNavLine();
+    }
     if (dd <= state.settings.radius) { depotArrived = true; beep(); updateNavCard(); }
   }
   if (cur && cur.lat) {
     const d = hav(lastPos, cur);
     $('navDist').firstChild.textContent = d > 950 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m';
-    // pop-up zodra je de straat in rijdt (~80 m van het adres)
-    if (d <= 80 && popStop !== cur) { popStop = cur; showArrivePop(cur); }
-    if (d > 140 && popStop === cur) hideArrivePop();
-    // automatisch afvinken binnen de radius
+    const notifyD = state.settings.notifyDist || 60;
+    if (d <= notifyD && popStop !== cur) { popStop = cur; showArrivePop(cur); }
+    if (d > notifyD * 2.2 && popStop === cur) hideArrivePop();
     if (state.settings.autoAdvance && d <= state.settings.radius && Date.now() - arriveLock > 8000) {
       arriveLock = Date.now();
       arrive(cur);
     }
   }
+}
+
+/* ---------- SMOOTH GPS INTERPOLATIE ---------- */
+function smoothMarker() {
+  if (!interpFrom || !interpTo || !gpsMarker) { interpRaf = null; return; }
+  const progress = Math.min(1, (Date.now() - interpStart) / interpDur);
+  const lat = interpFrom.lat + (interpTo.lat - interpFrom.lat) * progress;
+  const lon = interpFrom.lon + (interpTo.lon - interpFrom.lon) * progress;
+  gpsMarker.setLatLng([lat, lon]);
+  if (progress < 1) {
+    interpRaf = requestAnimationFrame(smoothMarker);
+  } else {
+    interpRaf = null;
+    interpFrom = null;
+  }
+}
+
+/* ---------- AUTO-ZOOM OP BOCHTEN ---------- */
+function autoZoom() {
+  if (!map || !state.routeSteps || !state.routeSteps.length || !lastPos) return;
+  // zoek de volgende stap die nog meer dan 30m weg is
+  let nearestTurnDist = Infinity;
+  for (const step of state.routeSteps) {
+    if (!step.maneuver || step.maneuver.type === 'arrive' || step.maneuver.type === 'depart') continue;
+    if (step.maneuver.location) {
+      const d = hav(lastPos, { lat: step.maneuver.location[1], lon: step.maneuver.location[0] });
+      if (d < nearestTurnDist) nearestTurnDist = d;
+    }
+  }
+  if (nearestTurnDist === Infinity) return;
+  // zoom: dichtbij bocht → zoom in, ver weg → zoom out
+  let targetZoom;
+  if (nearestTurnDist < 80) targetZoom = 18;
+  else if (nearestTurnDist < 200) targetZoom = 17;
+  else if (nearestTurnDist < 500) targetZoom = 16;
+  else targetZoom = 15;
+  if (Math.abs(map.getZoom() - targetZoom) >= 1) map.setZoom(targetZoom, { animate: true });
+}
+
+/* ---------- VERBLIJFTIJD (DWELL TIME) ---------- */
+function dwellKey(stop) { return stop ? stop.postcode + '|' + stop.huisnr : null; }
+function getDwellData() { try { return JSON.parse(localStorage.getItem(DWELL_KEY) || '{}'); } catch { return {}; } }
+function saveDwellData(d) { try { localStorage.setItem(DWELL_KEY, JSON.stringify(d)); } catch {} }
+function trackDwell(kmh) {
+  const cur = currentStop();
+  if (!cur) { dwellStart = null; dwellStop = null; return; }
+  if (kmh < 3) { // stilstaand
+    if (dwellStop !== cur) { dwellStop = cur; dwellStart = Date.now(); }
+  } else { // rijdend
+    if (dwellStop === cur && dwellStart) {
+      const secs = (Date.now() - dwellStart) / 1000;
+      if (secs >= 10 && secs <= 300) { // alleen zinvolle wachttijden (10s – 5min)
+        const key = dwellKey(cur);
+        const data = getDwellData();
+        if (!data[key]) data[key] = [];
+        data[key].push(Math.round(secs));
+        if (data[key].length > 10) data[key].shift(); // max 10 metingen bewaren
+        saveDwellData(data);
+      }
+    }
+    dwellStop = null; dwellStart = null;
+  }
+}
+function avgDwell(stop) {
+  const key = dwellKey(stop);
+  if (!key) return 0;
+  const data = getDwellData();
+  const arr = data[key];
+  if (!arr || !arr.length) return 60; // standaard: 60s per stop
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
 /* ---------- DUBBELE ADRESSEN SAMENVOEGEN ----------
@@ -1038,29 +1233,71 @@ function outOfOrderSet() {
   for (const s of state.stops) if (s.status === 'pending' && s.lat && nseq(s) >= 900) set.add(s);
   return set;
 }
+function pkgLabel(s) {
+  if (!s.seqs) return `Pakket nr ${s.seq}`;
+  if (s.seqs.length <= 3) return `Pakketten nr ${s.seqs.join(' & ')}`;
+  return `Pakketten nr ${s.seqs[0]} t/m ${s.seqs[s.seqs.length - 1]}`;
+}
 function showArrivePop(s) {
+  // Controleer eerst op adresnotities
+  const note = getNote(s);
+  if (note) { showNotesPop(s, note); return; }
+  _doShowArrivePop(s);
+}
+function _doShowArrivePop(s) {
   const warn = nseq(s) !== Infinity && nseq(s) !== minPendingSeq();
-  $('apNum').textContent = s.huisnr + (s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : '');
+  const hnr = s.huisnr + (s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : '');
+  $('apNum').textContent = hnr;
   $('apStreet').textContent = s.street + ' · ' + s.city;
-  const mps = minPendingSeq();
   if (s.steeg) {
-    $('apNum').textContent = s.huisnr + (s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : '');
-    $('apStreet').textContent = s.street + ' · ' + s.city;
-    $('apPkg').innerHTML = '🚶 STEEG · PAK PAKKETTEN <b>NR ' + seqLabel(s) + '</b><br>Hier ook bezorgen: ' + s.steegOther;
+    $('apPkg').innerHTML = `🚶 STEEG · PAK PAKKETTEN<br><b>NR ${seqLabel(s)}</b><br><small style="font-weight:400">Hier ook: ${s.steegOther}</small>`;
     $('arrivePop').classList.remove('warn');
-    $('arrivePop').style.display = 'block';
-    beep();
-    return;
+  } else if (warn) {
+    const mps = minPendingSeq();
+    $('apPkg').innerHTML = `⚠️ PAK ${s.seqs ? 'PAKKETTEN' : 'PAKKET'}<br><b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? '<br><small>900-SERIE</small>' : ''}<br><small style="font-weight:400">${s.sender || ''}${mps !== Infinity ? '<br>Niet nr ' + mps + '!' : ''}</small>`;
+    $('arrivePop').classList.add('warn');
+  } else if (s.afhaal) {
+    $('apPkg').innerHTML = `📤 AFHAALOPDRACHT<br><small style="font-weight:400">Pakket meenemen van klant</small>`;
+    $('arrivePop').classList.remove('warn');
+  } else {
+    $('apPkg').innerHTML = nseq(s) === Infinity
+      ? '📦 Handmatige stop'
+      : `📦 ${pkgLabel(s)}${s.sender ? '<br><small style="font-weight:400;color:#5b6470">' + s.sender + '</small>' : ''}`;
+    $('arrivePop').classList.remove('warn');
   }
-  const pk = s.seqs ? 'PAKKETTEN' : 'PAKKET';
-  $('apPkg').innerHTML = warn
-    ? `⚠️ PAK ${pk} <b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? ' (900-SERIE)' : ''}<br>${s.sender || ''}<br><small>${mps !== Infinity ? 'Niet het volgende pakket (nr ' + mps + ')!' : 'Let op de aparte stapel!'}</small>`
-    : (nseq(s) === Infinity ? '📦 Handmatige stop' : `📦 ${s.seqs ? 'Pakketten nr ' + seqLabel(s) : 'Pakket nr ' + s.seq}` + (s.sender ? ' · ' + s.sender : ''));
-  $('arrivePop').classList.toggle('warn', warn);
   $('arrivePop').style.display = 'block';
+  startArriveTimer();
   beep();
 }
-function hideArrivePop() { $('arrivePop').style.display = 'none'; }
+function showNotesPop(s, note) {
+  notesPending = s;
+  const parts = note.split('|');
+  $('notesIcon').textContent = parts[0].match(/^\S+/)[0]; // eerste emoji/woord
+  $('notesTitle').textContent = parts[0];
+  $('notesText').textContent = parts.slice(1).join(' ') || 'Let op bij dit adres!';
+  $('notesPop').style.display = 'block';
+  beep();
+}
+function hideNotesPop() {
+  $('notesPop').style.display = 'none';
+  if (notesPending) { _doShowArrivePop(notesPending); notesPending = null; }
+}
+function startArriveTimer() {
+  if (arriveTimer) clearTimeout(arriveTimer);
+  if (arriveProgRaf) cancelAnimationFrame(arriveProgRaf);
+  const dur = 10000;
+  const bar = $('arriveProgBar');
+  bar.style.transition = 'none'; bar.style.width = '100%';
+  requestAnimationFrame(() => {
+    bar.style.transition = `width ${dur}ms linear`;
+    bar.style.width = '0%';
+  });
+  arriveTimer = setTimeout(hideArrivePop, dur);
+}
+function hideArrivePop() {
+  $('arrivePop').style.display = 'none';
+  if (arriveTimer) { clearTimeout(arriveTimer); arriveTimer = null; }
+}
 function updatePkgWarn() {
   const cur = currentStop();
   const el = $('pkgWarn');
@@ -1076,7 +1313,7 @@ function updatePkgWarn() {
         (mps !== Infinity ? ` — niet nr ${mps}` : '');
     } else if (cur.seqs) {
       html = `📦 ${cur.seqs.length} PAKKETTEN OP DIT ADRES · NR ${seqLabel(cur)}`;
-      bg = '#6a1b9a'; fg = '#fff';
+      bg = 'var(--accent)'; fg = '#10141a';
     } else if (cur.afhaal) {
       html = '📤 AFHAALOPDRACHT · pakket meenemen van de klant';
       bg = 'var(--accent)'; fg = '#10141a';
@@ -1147,10 +1384,7 @@ function arrive(stop) {
 
 /* ---------- NAVIGATIEKAART (bovenbalk) ---------- */
 function fmtEta(sec) {
-  const t = new Date(Date.now() + sec * 1000);
-  return 'aank. ' + t.toTimeString().slice(0, 5);
-}
-function updateNavCard() {
+  const t = new Dfunction updateNavCard() {
   const cur = currentStop();
   const total = state.stops.length;
   const done = state.stops.filter(s => s.status !== 'pending').length;
@@ -1168,6 +1402,7 @@ function updateNavCard() {
     }
     $('pkgWarn').style.display = 'none';
     $('nextRow').style.display = 'none';
+    $('turnRow').style.display = 'none';
     return;
   }
   $('navStreet').textContent = `${cur.street} ${cur.huisnr}${cur.toevoeging ? ' ' + cur.toevoeging.replace(/^-/, '') : ''}`;
@@ -1191,6 +1426,7 @@ function updateNavCard() {
     $('nextRow').style.display = 'block';
     $('nextRow').textContent = 'Daarna: ' + nxt.join('   →   ');
   } else $('nextRow').style.display = 'none';
+  updateTurnRow();
   updatePkgWarn();
 }
 
@@ -1226,8 +1462,9 @@ function renderStopList() {
     const row = document.createElement('div');
     row.className = 'stop-row ' + s.status + (s === cur ? ' current' : '') + (s.seqs && !s.steeg ? ' multi' : '');
     const li = state.legInfo.find(l => l.stop === s);
+    const hasNote = !!getNote(s);
     row.innerHTML = `<div class="num">${s.status === 'done' ? '✓' : s.status === 'skipped' ? '⏭' : s.seq}</div>
-      <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}</div>
+      <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}${hasNote ? '<span class="note-dot" title="Notitie aanwezig"></span>' : ''}</div>
       <div class="a2">${s.steeg ? '🚶 steeg (ook ' + s.steegOther + ') · ' : ''}${s.seqs ? '📦 ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · 📦 AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ⚠️ geen positie'}</div></div>
       <div class="eta">${s.status === 'pending' && li ? fmtEta(li.cumDur).replace('aank. ', '') : ''}</div>`;
     row.onclick = () => openStopMenu(i);
@@ -1263,6 +1500,7 @@ function openStopMenu(i) {
   } else {
     mk('↩️ Opnieuw inplannen', '', () => { s.status = 'pending'; afterStopChange(true); });
   }
+  mk((getNote(s) ? '⚠️ Notitie bewerken' : '📝 Notitie toevoegen'), 'grey', () => openNotes(i));
   if (s.lat) mk('🗺 Open in Google Maps', 'grey', () => {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving`, '_blank');
   });
@@ -1286,7 +1524,6 @@ function moveToFront(i) {
 
 /* ---------- STOP TOEVOEGEN ---------- */
 function openAddStop() {
-  // wissel van paneel zonder extra history-entry (vervangt de stops-entry)
   $('panel-stops').classList.remove('open');
   $('addMsg').textContent = '';
   $('panel-addstop').classList.add('open');
@@ -1306,7 +1543,6 @@ async function addStop(mode) {
   const res = await geocodeOne(stop);
   if (!res) { $('addMsg').textContent = 'Adres niet gevonden. Controleer postcode en huisnummer.'; return; }
   stop.lat = res.lat; stop.lon = res.lon;
-  // straat en plaats ophalen voor weergave
   try {
     const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(pc + ' ' + mNr[1])}&fq=type:adres&rows=1`);
     const d = (await r.json()).response.docs[0];
@@ -1320,7 +1556,7 @@ async function addStop(mode) {
     const firstPending = state.stops.findIndex(x => x.status === 'pending');
     insertIdx = firstPending === -1 ? state.stops.length : firstPending + 1;
   }
-  stop.seq = dottedLabel(insertIdx); // bijv. 15.1 als hij tussen 15 en 16 komt
+  stop.seq = dottedLabel(insertIdx);
   state.stops.splice(insertIdx, 0, stop);
   closePanel('panel-addstop');
   $('addPC').value = ''; $('addNR').value = ''; $('addNote').value = '';
@@ -1334,16 +1570,22 @@ function toggleSet(key, btnId) {
   $(btnId).classList.toggle('on', state.settings[key]);
   persist();
   if (key === 'houseNumbers') drawHouseNumbers();
+  if (key === 'headingUp' && !state.settings.headingUp && map && typeof map.setBearing === 'function') map.setBearing(0);
   if (key === 'optimize' && state.settings.optimize) rebuildRoute(true).then(() => { drawStops(); updateNavCard(); });
 }
 function syncSettingsUI() {
   if (!state.settings.depot) state.settings.depot = { label: 'Wattstraat 3, Raalte', lat: null, lon: null };
+  if (state.settings.notifyDist == null) state.settings.notifyDist = 60;
   $('depotAddr').value = state.settings.depot.label || '';
   $('radius').value = state.settings.radius; $('radVal').textContent = state.settings.radius;
+  $('notifyDist').value = state.settings.notifyDist; $('notifyVal').textContent = state.settings.notifyDist;
   $('swAuto').classList.toggle('on', state.settings.autoAdvance);
   $('swOpt').classList.toggle('on', state.settings.optimize);
   $('swSound').classList.toggle('on', state.settings.sound);
   $('swHnr').classList.toggle('on', state.settings.houseNumbers);
+  $('swHeading').classList.toggle('on', state.settings.headingUp !== false);
+  $('swDark').classList.toggle('on', !!state.settings.darkMode);
+  applyDark(!!state.settings.darkMode);
 }
 
 /* ---------- HERVATTEN ---------- */
@@ -1361,7 +1603,7 @@ function resumeRide() {
   ensureDepot().then(() => rebuildRoute(false)).then(() => { drawStops(); updateNavCard(); });
 }
 
-// ETA's tonen kloktijden (nu + rijtijd): elke 30 s verversen
+// ETA's bijhouden: elke 30 s verversen
 setInterval(() => { if (currentStop() && $('scr-nav').classList.contains('active')) updateNavCard(); }, 30000);
 
 /* ---------- INIT ---------- */
@@ -1379,4 +1621,4 @@ setInterval(() => { if (currentStop() && $('scr-nav').classList.contains('active
 </body>
 </html>
 
-<!-- build 6 -->
+<!-- build 7 · smooth GPS · custom icon · auto-dismiss popup · heading-up · turn instruction · auto-depot · dark mode · DHL kleuren · dwell time · auto-zoom · adresnotities · per-rijder instellingen -->
