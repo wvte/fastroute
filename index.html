@@ -311,8 +311,9 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <!-- PANEL: INSTELLINGEN -->
 <div class="panel" id="panel-settings">
   <div class="sheet">
-    <h2>Instellingen<button class="x" onclick="closePanel('panel-settings')">✕</button></h2>
+    <h2 id="settingsTitle">Instellingen<button class="x" id="settingsCloseBtn" onclick="closePanel('panel-settings')">✕</button></h2>
     <div class="body">
+      <div id="setupBanner" style="display:none;background:#e8f5e9;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px;color:#2e7d32">✅ Stel je voorkeuren in — je kunt dit later altijd aanpassen via het tandwieltje ⚙️</div>
       <div class="setrow"><span>Chauffeur</span><span id="driverDisplay" style="font-size:14px;color:#5b6470">—</span></div>
       <div class="setrow"><span>Donkere modus</span><button class="switch" id="swDark" onclick="toggleDark()"></button></div>
       <div class="setrow"><span>Aankomstradius: <b id="radVal"></b> m</span><input type="range" min="15" max="75" step="5" id="radius" oninput="setRadius(this.value)"></div>
@@ -321,14 +322,19 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Automatisch afvinken (GPS)</span><button class="switch" id="swAuto" onclick="toggleSet('autoAdvance','swAuto')"></button></div>
       <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
-      <div class="setrow"><span>Huisnummers op kaart</span><button class="switch" id="swHnr" onclick="toggleSet('houseNumbers','swHnr')"></button></div>
       <div style="padding:14px 4px;border-bottom:1px solid #eef1f5">
         <div style="font-size:17px;margin-bottom:8px">🏠 Depot (terugkeer na laatste stop)</div>
         <input class="txt" id="depotAddr" placeholder="bijv. Wattstraat 3, Raalte">
         <button class="btn small" onclick="saveDepot()">Depot opslaan</button>
         <div id="depotMsg" style="font-size:13px;color:#5b6470;margin-top:6px"></div>
       </div>
-      <div style="padding:14px 4px">
+      <div id="setupSaveRow" style="display:none;padding:0 4px 10px">
+        <button class="btn green" style="width:100%" onclick="saveSetupAndStart()">✓ Opslaan &amp; starten</button>
+      </div>
+      <div id="regularSaveRow" style="padding:0 4px 10px">
+        <button class="btn" id="saveProfileBtn" style="width:100%" onclick="saveProfileAndConfirm()">💾 Instellingen opslaan</button>
+      </div>
+      <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()">■ Rit beëindigen</button>
       </div>
       <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px">RouteFast v1.0 · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
@@ -677,8 +683,24 @@ function renderRides() {
 }
 
 async function chooseRide(i) {
-  state.rideIdx = i;
   const ride = state.rides[i];
+  // Eerste keer: stuur naar setup scherm
+  if (ride.bezorgerId && !localStorage.getItem(PROFILE_KEY + '_' + ride.bezorgerId)) {
+    firstTimeRideIdx = i;
+    state.rideIdx = i;
+    loadDriverProfile(ride.bezorgerId); // laadt display naam
+    syncSettingsUI();
+    $('setupBanner').style.display = 'block';
+    $('setupSaveRow').style.display = 'block';
+    $('regularSaveRow').style.display = 'none';
+    $('endRideRow').style.display = 'none';
+    $('settingsTitle').childNodes[0].textContent = 'Jouw voorkeuren ';
+    $('settingsCloseBtn').style.display = 'none';
+    openPanel('panel-settings');
+    return;
+  }
+  state.rideIdx = i;
+  const ride2 = state.rides[i];
   state.stops = ride.stops.map(s => ({ ...s, status: 'pending', lat: null, lon: null }));
   mergeDuplicateStops();
   $('loadtitle').textContent = `Rit ${ride.rit} · ${ride.bezorger}`;
@@ -1160,6 +1182,7 @@ function unlinkSteeg(i) {
 
 /* ---------- DEPOT: terugkeer na de laatste stop ---------- */
 let depotArrived = false, depotDur = null;
+let firstTimeRideIdx = -1;
 function depotPoint() {
   const d = state.settings.depot;
   return (d && d.lat) ? d : null;
@@ -1585,11 +1608,11 @@ async function addStop(mode) {
 
 /* ---------- INSTELLINGEN ---------- */
 function setRadius(v) { state.settings.radius = +v; $('radVal').textContent = v; persist(); }
+function setNotifyDist(v) { state.settings.notifyDist = +v; $('notifyVal').textContent = v; persist(); }
 function toggleSet(key, btnId) {
   state.settings[key] = !state.settings[key];
   $(btnId).classList.toggle('on', state.settings[key]);
   persist();
-  if (key === 'houseNumbers') drawHouseNumbers();
   if (key === 'headingUp' && !state.settings.headingUp && map && typeof map.setBearing === 'function') map.setBearing(0);
   if (key === 'optimize' && state.settings.optimize) rebuildRoute(true).then(() => { drawStops(); updateNavCard(); });
 }
@@ -1602,7 +1625,6 @@ function syncSettingsUI() {
   $('swAuto').classList.toggle('on', state.settings.autoAdvance);
   $('swOpt').classList.toggle('on', state.settings.optimize);
   $('swSound').classList.toggle('on', state.settings.sound);
-  $('swHnr').classList.toggle('on', state.settings.houseNumbers);
   $('swHeading').classList.toggle('on', state.settings.headingUp !== false);
   $('swDark').classList.toggle('on', !!state.settings.darkMode);
   applyDark(!!state.settings.darkMode);
@@ -1777,6 +1799,29 @@ function applyDark(on) {
   $('swDark').classList.toggle('on', on);
 }
 function toggleDark() { applyDark(!state.settings.darkMode); persist(); }
+
+/* ---------- EERSTE KEER SETUP ---------- */
+function saveSetupAndStart() {
+  saveDriverProfile();
+  $('setupBanner').style.display = 'none';
+  $('setupSaveRow').style.display = 'none';
+  $('regularSaveRow').style.display = 'block';
+  $('endRideRow').style.display = 'block';
+  $('settingsTitle').childNodes[0].textContent = 'Instellingen ';
+  $('settingsCloseBtn').style.display = '';
+  closePanel('panel-settings');
+  const idx = firstTimeRideIdx;
+  firstTimeRideIdx = -1;
+  chooseRide(idx);
+}
+function saveProfileAndConfirm() {
+  saveDriverProfile();
+  const btn = $('saveProfileBtn');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Opgeslagen!';
+  btn.style.background = '#43a047';
+  setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+}
 
 /* ---------- PER-RIJDER INSTELLINGEN ---------- */
 function saveDriverProfile() {
