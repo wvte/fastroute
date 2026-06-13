@@ -311,7 +311,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   <div class="sheet">
     <h2>Instellingen<button class="x" onclick="closePanel('panel-settings')">✕</button></h2>
     <div class="body">
-      <div class="setrow"><span>Rijdersnaam (profiel)</span><input class="txt" id="driverName" placeholder="jouw naam" style="width:46%;margin:0;padding:8px" onchange="saveDriverProfile()"></div>
+      <div class="setrow"><span>Chauffeur</span><span id="driverDisplay" style="font-size:14px;color:#5b6470">—</span></div>
       <div class="setrow"><span>Donkere modus</span><button class="switch" id="swDark" onclick="toggleDark()"></button></div>
       <div class="setrow"><span>Aankomstradius: <b id="radVal"></b> m</span><input type="range" min="15" max="75" step="5" id="radius" oninput="setRadius(this.value)"></div>
       <div class="setrow"><span>Meldingsafstand: <b id="notifyVal"></b> m</span><input type="range" min="20" max="200" step="10" id="notifyDist" oninput="setNotifyDist(this.value)"></div>
@@ -618,7 +618,7 @@ function persist() {
   try {
     const ride = state.rides[state.rideIdx];
     localStorage.setItem(LS, JSON.stringify({
-      ride: ride ? { rit: ride.rit, bezorger: ride.bezorger, datum: ride.datum } : null,
+      ride: ride ? { rit: ride.rit, bezorger: ride.bezorger, datum: ride.datum, bezorgerId: ride.bezorgerId } : null,
       stops: state.stops, settings: state.settings
     }));
   } catch (e) {}
@@ -689,6 +689,14 @@ async function chooseRide(i) {
   }
   depotArrived = false;
   await ensureDepot();
+  // Depot als laatste stop toevoegen
+  const depSt = state.settings.depot;
+  if (depSt && depSt.lat) {
+    const maxSeq = state.stops.reduce((m, s) => Math.max(m, typeof s.seq === 'number' ? s.seq : 0), 0);
+    state.stops.push({ seq: maxSeq + 1, postcode: '', street: depSt.label || 'Depot', huisnr: '', toevoeging: '', city: '', lat: depSt.lat, lon: depSt.lon, status: 'pending', isDepot: true, sender: '', afhaal: false });
+  }
+  // Rijdersprofiel laden op basis van bezorgerId
+  if (ride.bezorgerId) loadDriverProfile(ride.bezorgerId);
   // 2. 900-pakketten (overloop, geen eigen plek in de planning) slim inplannen
   const nOvf = insertOverflowStops();
   if (nOvf) $('loadmsg').textContent = `${nOvf} extra pakket(ten) (900-serie) ingepland...`;
@@ -758,11 +766,6 @@ async function rebuildRoute(allowOptimize) {
 let navLineOrigin = null, navLineTs = 0, navLineStop = null;
 async function updateNavLine() {
   let cur = currentStop();
-  // alle stops klaar? Dan is het depot de bestemming
-  if (!cur && state.stops.length && !depotArrived && depotPoint()) {
-    cur = depotPoint();
-    depotDur = null;
-  }
   const origin = lastPos ? { lat: lastPos.lat, lon: lastPos.lon } : null;
   state.routeGeom = null;
   if (cur && cur.lat && origin) {
@@ -775,7 +778,6 @@ async function updateNavLine() {
         state.routeSteps = route.legs[0].steps;
       }
       navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
-      if (cur === depotPoint()) depotDur = route.duration;
       if (state.legInfo.length && state.legInfo[0].stop === cur) {
         const delta = route.duration - state.legInfo[0].cumDur;
         if (Math.abs(delta) > 5) state.legInfo.forEach(l => { l.cumDur += delta; });
@@ -827,6 +829,17 @@ function drawStops() {
   state.stops.forEach(s => {
     if (!s.lat) return;
     const isCur = s === cur;
+    if (s.isDepot) {
+      const size = isCur ? 44 : 36;
+      const icon = L.divIcon({
+        className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+        html: `<div class="mk ${isCur ? 'current' : s.status}" style="width:${size}px;height:${size}px;background:#10141a;font-size:17px">${s.status === 'done' ? '✓' : '🏠'}</div>`
+      });
+      const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: isCur ? 1000 : 500 }).addTo(map);
+      m.on('click', () => openStopMenu(state.stops.indexOf(s)));
+      stopMarkers.push(m);
+      return;
+    }
     const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steeg ? ' steeg' : (s.seqs ? ' multi' : ''));
     const size = isCur ? 44 : 30;
     const icon = L.divIcon({
@@ -837,14 +850,6 @@ function drawStops() {
     m.on('click', () => openStopMenu(state.stops.indexOf(s)));
     stopMarkers.push(m);
   });
-  const dep = depotPoint();
-  if (dep) {
-    const icon = L.divIcon({
-      className: '', iconSize: [36, 36], iconAnchor: [18, 18],
-      html: `<div class="mk" style="width:36px;height:36px;background:#10141a;font-size:17px">🏠</div>`
-    });
-    stopMarkers.push(L.marker([dep.lat, dep.lon], { icon, zIndexOffset: 500 }).addTo(map));
-  }
   drawHouseNumbers();
 }
 
@@ -941,8 +946,6 @@ function onPos(p) {
     $('speedNow').classList.toggle('over', limitVal !== null && kmh > limitVal + 3);
     // Dwell time: bijhouden hoe lang je stilstaat per adres
     trackDwell(kmh);
-    // Auto-zoom op bochten
-    autoZoom();
   }
   refreshSpeedLimit();
 
@@ -960,12 +963,13 @@ function onPos(p) {
   if (lastHeading != null && gpsMarker.setRotationAngle) gpsMarker.setRotationAngle(lastHeading);
 
   if (follow && map) {
-    // heading-up: paneer zodat de positie iets boven het midden staat (meer vooruit zien)
-    if (state.settings.headingUp && typeof map.setBearing === 'function') {
-      map.panTo([lastPos.lat, lastPos.lon]);
-    } else {
-      map.panTo([lastPos.lat, lastPos.lon]);
-    }
+    // GPS-marker in onderste derde van scherm zodat je meer vooruit ziet
+    const mapH = map.getSize().y;
+    const shiftPx = Math.round(mapH * 0.22);
+    const z = map.getZoom();
+    const pt = map.project([lastPos.lat, lastPos.lon], z);
+    const shifted = L.point(pt.x, pt.y - shiftPx);
+    map.panTo(map.unproject(shifted, z), { animate: true, duration: 0.3 });
   }
   if (gpsLost) { gpsLost = false; updateNavCard(); }
 
@@ -975,21 +979,11 @@ function onPos(p) {
     navLineStop = cur; navLineTs = Date.now();
     updateNavLine();
   }
-  // Depot navigatie ook verversen onderweg
-  if (!cur && state.stops.length && !depotArrived && depotPoint()) {
-    const dep = depotPoint();
-    const dd = hav(lastPos, dep);
-    $('navDist').firstChild.textContent = dd > 950 ? (dd / 1000).toFixed(1) + ' km' : Math.round(dd) + ' m';
-    if (navLineStop !== dep && (navLineOrigin && hav(lastPos, navLineOrigin) > 150 && Date.now() - navLineTs > 8000)) {
-      navLineTs = Date.now(); updateNavLine();
-    }
-    if (dd <= state.settings.radius) { depotArrived = true; beep(); updateNavCard(); }
-  }
   if (cur && cur.lat) {
     const d = hav(lastPos, cur);
     $('navDist').firstChild.textContent = d > 950 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m';
     const notifyD = state.settings.notifyDist || 60;
-    if (d <= notifyD && popStop !== cur) { popStop = cur; showArrivePop(cur); }
+    if (d <= notifyD && popStop !== cur) { popStop = cur; if (!cur.isDepot) showArrivePop(cur); }
     if (d > notifyD * 2.2 && popStop === cur) hideArrivePop();
     if (state.settings.autoAdvance && d <= state.settings.radius && Date.now() - arriveLock > 8000) {
       arriveLock = Date.now();
@@ -1013,27 +1007,6 @@ function smoothMarker() {
   }
 }
 
-/* ---------- AUTO-ZOOM OP BOCHTEN ---------- */
-function autoZoom() {
-  if (!map || !state.routeSteps || !state.routeSteps.length || !lastPos) return;
-  // zoek de volgende stap die nog meer dan 30m weg is
-  let nearestTurnDist = Infinity;
-  for (const step of state.routeSteps) {
-    if (!step.maneuver || step.maneuver.type === 'arrive' || step.maneuver.type === 'depart') continue;
-    if (step.maneuver.location) {
-      const d = hav(lastPos, { lat: step.maneuver.location[1], lon: step.maneuver.location[0] });
-      if (d < nearestTurnDist) nearestTurnDist = d;
-    }
-  }
-  if (nearestTurnDist === Infinity) return;
-  // zoom: dichtbij bocht → zoom in, ver weg → zoom out
-  let targetZoom;
-  if (nearestTurnDist < 80) targetZoom = 18;
-  else if (nearestTurnDist < 200) targetZoom = 17;
-  else if (nearestTurnDist < 500) targetZoom = 16;
-  else targetZoom = 15;
-  if (Math.abs(map.getZoom() - targetZoom) >= 1) map.setZoom(targetZoom, { animate: true });
-}
 
 /* ---------- VERBLIJFTIJD (DWELL TIME) ---------- */
 function dwellKey(stop) { return stop ? stop.postcode + '|' + stop.huisnr : null; }
@@ -1221,11 +1194,11 @@ let popStop = null;
 const nseq = s => (typeof s.seq === 'number' ? s.seq : Infinity);
 function minPendingSeq() { // laagste 'gewone' pakketnummer dat nog moet
   let m = Infinity;
-  for (const s of state.stops) if (s.status === 'pending' && !s.steeg && nseq(s) < 900 && nseq(s) < m) m = nseq(s);
+  for (const s of state.stops) if (s.status === 'pending' && !s.steeg && !s.isDepot && nseq(s) < 900 && nseq(s) < m) m = nseq(s);
   return m;
 }
 function outOfOrderSet() {
-  const pend = state.stops.filter(s => s.status === 'pending' && s.lat && nseq(s) !== Infinity && nseq(s) < 900 && !s.steeg);
+  const pend = state.stops.filter(s => s.status === 'pending' && s.lat && nseq(s) !== Infinity && nseq(s) < 900 && !s.steeg && !s.isDepot);
   const sorted = [...pend].sort((a, b) => nseq(a) - nseq(b));
   const set = new Set();
   pend.forEach((s, i) => { if (sorted[i] !== s) set.add(s); });
@@ -1239,9 +1212,9 @@ function pkgLabel(s) {
   return `Pakketten nr ${s.seqs[0]} t/m ${s.seqs[s.seqs.length - 1]}`;
 }
 function showArrivePop(s) {
-  // Controleer eerst op adresnotities
+  // Toon adresnotitie alleen als er meerdere meldingen zijn (drempel >= 2)
   const note = getNote(s);
-  if (note) { showNotesPop(s, note); return; }
+  if (note && note.count >= 2) { showNotesPop(s, note.text); return; }
   _doShowArrivePop(s);
 }
 function _doShowArrivePop(s) {
@@ -1393,20 +1366,25 @@ function updateNavCard() {
   const total = state.stops.length;
   const done = state.stops.filter(s => s.status !== 'pending').length;
   if (!cur) {
-    const dep = depotPoint();
-    if (dep && state.stops.length && !depotArrived) {
-      $('navStreet').textContent = '🏠 Naar depot';
-      $('navMeta').textContent = `${state.settings.depot.label} · alle ${total} stops klaar`;
-      $('navEta').textContent = depotDur ? fmtEta(depotDur) : '';
-    } else {
-      $('navStreet').textContent = '🎉 Rit voltooid!';
-      $('navMeta').textContent = `${total} stops afgerond` + (dep ? ' · terug bij depot' : '');
-      $('navDist').firstChild.textContent = '—';
-      $('navEta').textContent = '';
-    }
+    $('navStreet').textContent = '🎉 Rit voltooid!';
+    $('navMeta').textContent = `${total} stops afgerond`;
+    $('navDist').firstChild.textContent = '—';
+    $('navEta').textContent = '';
     $('pkgWarn').style.display = 'none';
     $('nextRow').style.display = 'none';
     $('turnRow').style.display = 'none';
+    saveDriverProfile();
+    return;
+  }
+  if (cur.isDepot) {
+    $('navStreet').textContent = '🏠 Terug naar depot';
+    $('navMeta').textContent = cur.street;
+    const liDep = state.legInfo.find(l => l.stop === cur);
+    $('navEta').textContent = liDep ? fmtEta(liDep.cumDur) : '';
+    if (!lastPos) $('navDist').firstChild.textContent = '—';
+    $('pkgWarn').style.display = 'none';
+    $('nextRow').style.display = 'none';
+    updateTurnRow();
     return;
   }
   $('navStreet').textContent = `${cur.street} ${cur.huisnr}${cur.toevoeging ? ' ' + cur.toevoeging.replace(/^-/, '') : ''}`;
@@ -1598,7 +1576,7 @@ function resumeRide() {
   if (!saved || !saved.stops) return;
   state.stops = saved.stops;
   state.settings = Object.assign(state.settings, saved.settings || {});
-  state.rides = [{ rit: saved.ride.rit, bezorger: saved.ride.bezorger, datum: saved.ride.datum, stops: [] }];
+  state.rides = [{ rit: saved.ride.rit, bezorger: saved.ride.bezorger, datum: saved.ride.datum, bezorgerId: saved.ride.bezorgerId, stops: [] }];
   state.rideIdx = 0;
   syncSettingsUI();
   initMap();
@@ -1650,7 +1628,7 @@ function updateTurnRow() {
 function noteKey(s) { return s.postcode + '|' + s.huisnr + (s.toevoeging ? '|' + s.toevoeging : ''); }
 function getAllNotes() { try { return JSON.parse(localStorage.getItem(NOTES_KEY) || '{}'); } catch { return {}; } }
 function saveAllNotes(d) { try { localStorage.setItem(NOTES_KEY, JSON.stringify(d)); } catch {} }
-function getNote(s) { const d = getAllNotes(); return d[noteKey(s)] || null; }
+function getNote(s) { const d = getAllNotes(); const raw = d[noteKey(s)]; if (!raw) return null; if (typeof raw === 'string') return { text: raw, count: 2 }; return raw; }
 let notesTargetIdx = -1;
 function openNotes(i) {
   notesTargetIdx = i;
@@ -1660,13 +1638,12 @@ function openNotes(i) {
   openPanel('panel-notes');
 }
 function renderNotesList(s) {
-  const key = noteKey(s);
-  const all = getAllNotes();
-  const note = all[key];
+  const note = getNote(s);
   const el = $('notesList');
   if (note) {
+    const countLabel = note.count >= 2 ? ` <span style="color:#e53935;font-weight:700">(${note.count}×)</span>` : '';
     el.innerHTML = `<div class="card" style="display:flex;justify-content:space-between;align-items:center">
-      <span>${note.replace(/\|/g, ' — ')}</span>
+      <span>${note.text}${countLabel}</span>
       <button class="btn red small" onclick="deleteNote()">🗑</button>
     </div>`;
   } else {
@@ -1678,9 +1655,15 @@ function addNote() {
   const s = state.stops[notesTargetIdx];
   const type = $('notesType').value;
   const custom = $('notesCustom').value.trim();
-  const val = type + (custom ? '|' + custom : '');
+  const text = type + (custom ? ' — ' + custom : '');
   const all = getAllNotes();
-  all[noteKey(s)] = val;
+  const key = noteKey(s);
+  const existing = getNote(s);
+  if (existing && existing.text === text) {
+    all[key] = { text, count: existing.count + 1 };
+  } else {
+    all[key] = { text, count: 1 };
+  }
   saveAllNotes(all);
   $('notesCustom').value = '';
   renderNotesList(s);
@@ -1706,19 +1689,24 @@ function toggleDark() { applyDark(!state.settings.darkMode); persist(); }
 
 /* ---------- PER-RIJDER INSTELLINGEN ---------- */
 function saveDriverProfile() {
-  const name = $('driverName').value.trim();
-  if (!name) return;
+  const ride = state.rides && state.rides[state.rideIdx];
+  const pid = ride && ride.bezorgerId;
+  if (!pid) return;
   const profile = {
+    name: ride.bezorger || '',
     notifyDist: state.settings.notifyDist,
     radius: state.settings.radius,
     darkMode: state.settings.darkMode,
     headingUp: state.settings.headingUp
   };
-  try { localStorage.setItem(PROFILE_KEY + '_' + name, JSON.stringify(profile)); } catch {}
+  try { localStorage.setItem(PROFILE_KEY + '_' + pid, JSON.stringify(profile)); } catch {}
 }
-function loadDriverProfile(name) {
+function loadDriverProfile(bezorgerId) {
   try {
-    const raw = localStorage.getItem(PROFILE_KEY + '_' + name);
+    const ride = state.rides && state.rides[state.rideIdx];
+    const displayName = (ride && ride.bezorger) || bezorgerId;
+    if ($('driverDisplay')) $('driverDisplay').textContent = `${displayName} (${bezorgerId})`;
+    const raw = localStorage.getItem(PROFILE_KEY + '_' + bezorgerId);
     if (!raw) return;
     const p = JSON.parse(raw);
     Object.assign(state.settings, p);
