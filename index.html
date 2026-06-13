@@ -135,7 +135,7 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 #notesPop .nIcon{font-size:44px;line-height:1;}
 #notesPop .nTitle{font-size:19px;font-weight:800;margin:6px 0 4px;}
 #notesPop .nText{font-size:15px;color:#5b6470;margin-bottom:12px;}
-#notesPop .nX{width:100%;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:16px;font-weight:700;padding:10px;cursor:pointer;}
+#notesPop .nX{width:100%;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:16px;font-weight:700;padding:10px;cursor:pointer;position:relative;overflow:hidden;}
 /* Notitie-badge op stop-rij */
 .note-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff6d00;margin-left:5px;vertical-align:middle;}
 #speedBox{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);z-index:500;display:none;flex-direction:column;align-items:center;gap:6px;}
@@ -234,8 +234,9 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
     <div class="nIcon" id="notesIcon">⚠️</div>
     <div class="nTitle" id="notesTitle"></div>
     <div class="nText" id="notesText"></div>
+    <div id="notesPkg" style="font-size:14px;font-weight:700;color:#10141a;margin:6px 0 10px"></div>
     <button class="nX" onclick="moreInfoNotesPop()" style="background:#ff6d00;margin-bottom:8px">Meer informatie</button>
-    <button class="nX" onclick="hideNotesPop()">Begrepen</button>
+    <button class="nX" id="notesBegrepen" onclick="hideNotesPop()">Begrepen<div id="notesProgBar" style="position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,.25);pointer-events:none;transition:width linear;width:100%"></div></button>
   </div>
   <div id="map"></div>
   <button class="fab" id="fabZoomIn" onclick="map.zoomIn()">＋</button>
@@ -376,6 +377,7 @@ let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, inter
 let dwellStart = null, dwellStop = null;
 // Arrive popup auto-dismiss
 let arriveTimer = null, arriveProgRaf = null;
+let notesTimer = null;
 // Notes popup
 let notesPending = null;
 
@@ -1257,12 +1259,24 @@ function showNotesPop(s, noteText) {
   $('notesIcon').textContent = emojiMatch ? emojiMatch[1] : '⚠️';
   $('notesTitle').textContent = emojiMatch ? emojiMatch[2].trim() : title;
   $('notesText').textContent = detail || 'Let op bij dit adres!';
+  // Pakketnummer tonen
+  const pkgTxt = (s && !s.isDepot && nseq(s) !== Infinity) ? pkgLabel(s) : '';
+  $('notesPkg').textContent = pkgTxt ? '📦 ' + pkgTxt : '';
   $('notesPop').style.display = 'block';
+  startNotesTimer();
   beep();
 }
 function hideNotesPop() {
   $('notesPop').style.display = 'none';
+  if (notesTimer) { clearTimeout(notesTimer); notesTimer = null; }
   if (notesPending) { _doShowArrivePop(notesPending); notesPending = null; }
+}
+function startNotesTimer() {
+  if (notesTimer) clearTimeout(notesTimer);
+  const dur = 10000;
+  const bar = $('notesProgBar');
+  if (bar) { bar.style.transition = 'none'; bar.style.width = '100%'; requestAnimationFrame(() => { requestAnimationFrame(() => { bar.style.transition = `width ${dur}ms linear`; bar.style.width = '0%'; }); }); }
+  notesTimer = setTimeout(hideNotesPop, dur);
 }
 function moreInfoNotesPop() {
   $('notesPop').style.display = 'none';
