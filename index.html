@@ -529,6 +529,14 @@ async function geocodeAll(stops, onProgress) {
 }
 
 /* ---------- AFSTAND & ROUTING ---------- */
+function calcBearing(from, to) {
+  const toR = Math.PI / 180;
+  const dLon = (to.lon - from.lon) * toR;
+  const lat1 = from.lat * toR, lat2 = to.lat * toR;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
 function hav(a, b) {
   const R = 6371000, toR = Math.PI / 180;
   const dLat = (b.lat - a.lat) * toR, dLon = (b.lon - a.lon) * toR;
@@ -983,9 +991,12 @@ function onPos(p) {
   // heading (rijrichting) — voor heading-up kaart
   if (p.coords.heading != null && !isNaN(p.coords.heading)) {
     lastHeading = p.coords.heading;
-    if (map && state.settings.headingUp && follow && typeof map.setBearing === 'function') {
-      map.setBearing(lastHeading);
-    }
+  } else if (interpFrom && interpTo && hav(interpFrom, interpTo) > 8) {
+    // Bereken richting uit positieverandering als apparaat geen heading geeft
+    lastHeading = calcBearing(interpFrom, interpTo);
+  }
+  if (lastHeading != null && map && state.settings.headingUp && follow && typeof map.setBearing === 'function') {
+    map.setBearing(lastHeading);
   }
 
   if (p.coords.accuracy > 150) {
@@ -2091,18 +2102,4 @@ function loadDriverProfile(bezorgerId) {
 <!-- RITOVERZICHT -->
 <div id="rideCompleteScreen" style="display:none;position:fixed;inset:0;background:linear-gradient(160deg,#d40511 0%,#8a0008 100%);z-index:3600;overflow-y:auto;"></div>
 
-<!-- ADMIN LOGIN MODAL -->
-<div id="adminLoginModal">
-  <div class="alCard">
-    <h2>🔒 Admin login</h2>
-    <input id="adminUser" placeholder="Gebruikersnaam" autocomplete="off">
-    <input id="adminPass" type="password" placeholder="Wachtwoord">
-    <button class="btn green" style="width:100%" onclick="adminLogin()">Inloggen</button>
-    <div class="err" id="adminErr"></div>
-    <button class="btn" style="width:100%;margin-top:8px;background:#eee;color:#555" onclick="closeAdminLogin()">Annuleren</button>
-  </div>
-</div>
-
-<!-- ADMIN PANEL -->
-<div id="adminPanel">
-  <div cl
+<!--
