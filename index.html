@@ -401,6 +401,16 @@ let state = {
 let map = null, gpsMarker = null, gpsIconUrl = null, accCircle = null, stopMarkers = [], routeLine = null, hnrLayer = null;
 let watchId = null, lastPos = null, lastHeading = null, wakeLock = null;
 let trackMode = 'heading'; // 'heading' | 'north' | 'free'
+// Bearing-smoothing: low-pass filter op hoek (voorkomt schokkerige kaartrotatie)
+let bearingSmooth = null;
+const BEARING_ALPHA = 0.25; // 0=nooit updaten, 1=direct — hoger = reageert sneller
+function smoothBearing(prev, next, a) {
+  if (prev == null) return next;
+  const pR = prev * Math.PI/180, nR = next * Math.PI/180;
+  const s = (1-a)*Math.sin(pR) + a*Math.sin(nR);
+  const c = (1-a)*Math.cos(pR) + a*Math.cos(nR);
+  return (Math.atan2(s, c)*180/Math.PI + 360) % 360;
+}
 let arriveLock = 0;
 // Smooth GPS interpolation
 let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, interpRaf = null;
@@ -994,11 +1004,20 @@ function onPos(p) {
   lastPos._ts = p.timestamp || Date.now();
 
   // heading (rijrichting) — voor heading-up kaart
-  if (p.coords.heading != null && !isNaN(p.coords.heading)) {
-    lastHeading = p.coords.heading;
-  } else if (interpFrom && interpTo && hav(interpFrom, interpTo) > 8) {
-    // Bereken richting uit positieverandering als apparaat geen heading geeft
-    lastHeading = calcBearing(interpFrom, interpTo);
+  // Bearing: alleen updaten bij voldoende beweging (>3 km/h = ~0.8 m/s)
+  const spd = p.coords.speed;
+  const movingFast = spd != null ? spd > 0.8 : (interpFrom && interpTo && hav(interpFrom, interpTo) > 5);
+  if (movingFast) {
+    let rawBearing = null;
+    if (p.coords.heading != null && !isNaN(p.coords.heading)) {
+      rawBearing = p.coords.heading;
+    } else if (interpFrom && interpTo && hav(interpFrom, interpTo) > 5) {
+      rawBearing = calcBearing(interpFrom, interpTo);
+    }
+    if (rawBearing != null) {
+      bearingSmooth = smoothBearing(bearingSmooth, rawBearing, BEARING_ALPHA);
+      lastHeading = bearingSmooth;
+    }
   }
   if (map && typeof map.setBearing === 'function') {
     if (trackMode === 'heading' && lastHeading != null) map.setBearing(lastHeading);
