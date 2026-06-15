@@ -545,9 +545,9 @@ function hav(a, b) {
 }
 
 async function osrmRouteSnap(from, to) {
-  // Snap beide punten naar de dichtstbijzijnde weg (max 50m) voor betere route-tracking
+  // Gebruik grote snap-radius zodat GPS niet exact op de weg hoeft te staan
   const cs = `${from.lon.toFixed(6)},${from.lat.toFixed(6)};${to.lon.toFixed(6)},${to.lat.toFixed(6)}`;
-  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=true&radiuses=50;50`);
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=true&radiuses=500;500`);
   if (!r.ok) throw new Error('OSRM snap ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM snap: ' + j.code);
@@ -842,17 +842,18 @@ async function updateNavLine() {
     try {
       const route = await osrmRouteSnap(origin, cur);
       state.routeGeom = route.geometry;
-      // Volgende afslag uit OSRM stappen
-      state.routeSteps = [];
-      if (route.legs && route.legs[0] && route.legs[0].steps) {
-        state.routeSteps = route.legs[0].steps;
-      }
+      state.routeSteps = (route.legs && route.legs[0] && route.legs[0].steps) ? route.legs[0].steps : [];
       navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
       if (state.legInfo.length && state.legInfo[0].stop === cur) {
         const delta = route.duration - state.legInfo[0].cumDur;
         if (Math.abs(delta) > 5) state.legInfo.forEach(l => { l.cumDur += delta; });
       }
-    } catch (e) {}
+    } catch (e) {
+      // Fallback: rechte lijn van GPS naar volgende stop als OSRM faalt
+      state.routeGeom = { type: 'LineString', coordinates: [[origin.lon, origin.lat], [cur.lon, cur.lat]] };
+      state.routeSteps = [];
+      navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
+    }
   }
   drawRoute();
   updateNavCard();
@@ -1054,7 +1055,7 @@ function onPos(p) {
 
   const cur = currentStop();
   if (cur && cur.lat && (navLineStop !== cur ||
-      (navLineOrigin && hav(lastPos, navLineOrigin) > 150 && Date.now() - navLineTs > 8000))) {
+      (navLineOrigin && hav(lastPos, navLineOrigin) > 30 && Date.now() - navLineTs > 5000))) {
     navLineStop = cur; navLineTs = Date.now();
     updateNavLine();
   }
@@ -2099,7 +2100,4 @@ function loadDriverProfile(bezorgerId) {
 }
 </script>
 
-<!-- RITOVERZICHT -->
-<div id="rideCompleteScreen" style="display:none;position:fixed;inset:0;background:linear-gradient(160deg,#d40511 0%,#8a0008 100%);z-index:3600;overflow-y:auto;"></div>
-
-<!--
+<!-
