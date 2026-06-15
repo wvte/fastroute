@@ -76,7 +76,11 @@ header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
 #navBottom .btn{font-size:15px;font-weight:800;padding:10px 4px 12px;line-height:1.15;border-radius:16px;}
 #navBottom .btn .ic{display:block;font-size:24px;margin-bottom:3px;}
 .fab{position:absolute;z-index:500;background:#fff;border:none;border-radius:50%;width:54px;height:54px;font-size:24px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;}
-#fabCenter{right:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);}
+#fabCenter{right:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
+#fabCenter .fci{font-size:22px;line-height:1;}
+#fabCenter .fcl{font-size:8px;font-weight:900;letter-spacing:.4px;color:#d40511;}
+#fabCenter.mode-north .fcl{color:#1565d8;}
+#fabCenter.mode-free .fcl{color:#888;}
 #fabZoomIn{right:12px;bottom:calc(env(safe-area-inset-bottom) + 252px);}
 #fabZoomOut{right:12px;bottom:calc(env(safe-area-inset-bottom) + 187px);}
 /* panels */
@@ -261,7 +265,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   <div id="map"></div>
   <button class="fab" id="fabZoomIn" onclick="map.zoomIn()">＋</button>
   <button class="fab" id="fabZoomOut" onclick="map.zoomOut()">－</button>
-  <button class="fab" id="fabCenter" onclick="toggleFollow()"><svg viewBox="0 0 24 24" style="width:26px;height:26px;fill:#d40511;display:block;margin:0 auto"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg></button>
+  <button class="fab" id="fabCenter" onclick="cycleFabCenter()"><span class="fci" id="fabCenterIcon">🧭</span><span class="fcl" id="fabCenterLabel">HEADING</span></button>
   <div id="navBottom">
     <button class="btn green" onclick="completeCurrent()"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span>Klaar</button>
     <button class="btn orange" onclick="skipCurrent()"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></span>Overslaan</button>
@@ -338,7 +342,6 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Donkere modus</span><button class="switch" id="swDark" onclick="toggleDark()"></button></div>
       <div class="setrow"><span>Aankomstradius: <b id="radVal"></b> m</span><input type="range" min="15" max="75" step="5" id="radius" oninput="setRadius(this.value)"></div>
       <div class="setrow"><span>Meldingsafstand: <b id="notifyVal"></b> m</span><input type="range" min="20" max="200" step="10" id="notifyDist" oninput="setNotifyDist(this.value)"></div>
-      <div class="setrow"><span>Kaart meedraaien (heading-up)</span><button class="switch" id="swHeading" onclick="toggleSet('headingUp','swHeading')"></button></div>
       <div class="setrow"><span>Automatisch afvinken (GPS)</span><button class="switch" id="swAuto" onclick="toggleSet('autoAdvance','swAuto')"></button></div>
       <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Auto-zoom bij bochten</span><button class="switch" id="swAutoZoom" onclick="toggleSet('autoZoom','swAutoZoom')"></button></div>
@@ -396,7 +399,8 @@ let state = {
   routeDist: 0
 };
 let map = null, gpsMarker = null, gpsIconUrl = null, accCircle = null, stopMarkers = [], routeLine = null, hnrLayer = null;
-let watchId = null, lastPos = null, lastHeading = null, follow = true, wakeLock = null;
+let watchId = null, lastPos = null, lastHeading = null, wakeLock = null;
+let trackMode = 'heading'; // 'heading' | 'north' | 'free'
 let arriveLock = 0;
 // Smooth GPS interpolation
 let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, interpRaf = null;
@@ -886,7 +890,7 @@ function initMap() {
   const withPos = state.stops.filter(s => s.lat);
   if (withPos.length) map.fitBounds(withPos.map(s => [s.lat, s.lon]), { padding: [40, 40] });
   else map.setView([52.35, 6.13], 13);
-  map.on('dragstart', () => { follow = false; });
+  map.on('dragstart', () => { if (trackMode !== 'free') { trackMode = 'free'; updateFabCenter(); } });
   map.on('zoomstart', () => { saveNextZoom = true; });
   map.on('zoomend', () => { if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); } saveNextZoom = false; drawHouseNumbers(); });
   drawStops(); drawRoute();
@@ -996,8 +1000,9 @@ function onPos(p) {
     // Bereken richting uit positieverandering als apparaat geen heading geeft
     lastHeading = calcBearing(interpFrom, interpTo);
   }
-  if (lastHeading != null && map && state.settings.headingUp && follow && typeof map.setBearing === 'function') {
-    map.setBearing(lastHeading);
+  if (map && typeof map.setBearing === 'function') {
+    if (trackMode === 'heading' && lastHeading != null) map.setBearing(lastHeading);
+    else if (trackMode === 'north') map.setBearing(0);
   }
 
   if (p.coords.accuracy > 150) {
@@ -1041,15 +1046,20 @@ function onPos(p) {
   }
   if (lastHeading != null && gpsMarker.setRotationAngle) gpsMarker.setRotationAngle(lastHeading);
 
-  if (follow && map) {
-    // GPS-marker in onderste derde van scherm zodat je meer vooruit ziet
+  if (trackMode !== 'free' && map) {
     const mapH = map.getSize().y;
-    const shiftPx = Math.round(mapH * 0.22);
     const z = map.getZoom();
-    const brRad = ((lastHeading || 0) * Math.PI / 180);
-    const pt = map.project([lastPos.lat, lastPos.lon], z);
-    const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
-    map.panTo(map.unproject(shifted, z), { animate: true, duration: 0.3 });
+    if (trackMode === 'heading') {
+      // Offset in rijrichting: meer van de weg vooruit zien
+      const shiftPx = Math.round(mapH * 0.22);
+      const brRad = ((lastHeading || 0) * Math.PI / 180);
+      const pt = map.project([lastPos.lat, lastPos.lon], z);
+      const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
+      map.panTo(map.unproject(shifted, z), { animate: true, duration: 0.3 });
+    } else {
+      // Noord-modus: exact centreren
+      map.panTo([lastPos.lat, lastPos.lon], { animate: true, duration: 0.3 });
+    }
   }
   if (gpsLost) { gpsLost = false; updateNavCard(); }
 
@@ -1476,18 +1486,37 @@ async function refreshSpeedLimit() {
   limitBusy = false;
 }
 
-function toggleFollow() {
-  follow = true;
+function cycleFabCenter() {
+  // Vrij → Heading → Noord → Heading → ...
+  if (trackMode === 'free') trackMode = 'heading';
+  else if (trackMode === 'heading') trackMode = 'north';
+  else trackMode = 'heading';
+  updateFabCenter();
   if (lastPos && map) {
-    const mapH = map.getSize().y;
-    const shiftPx = Math.round(mapH * 0.22);
-    const z = Math.max(map.getZoom(), 17);
-    const brRad = ((lastHeading || 0) * Math.PI / 180);
+    const z = Math.max(map.getZoom(), 16);
     saveNextZoom = false;
-    const pt = map.project([lastPos.lat, lastPos.lon], z);
-    const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
-    map.setView(map.unproject(shifted, z), z, { animate: true });
+    if (trackMode === 'heading') {
+      const mapH = map.getSize().y;
+      const shiftPx = Math.round(mapH * 0.22);
+      const brRad = ((lastHeading || 0) * Math.PI / 180);
+      const pt = map.project([lastPos.lat, lastPos.lon], z);
+      const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
+      map.setView(map.unproject(shifted, z), z, { animate: true });
+      if (map && typeof map.setBearing === 'function' && lastHeading != null) map.setBearing(lastHeading);
+    } else {
+      map.setView([lastPos.lat, lastPos.lon], z, { animate: true });
+      if (map && typeof map.setBearing === 'function') map.setBearing(0);
+    }
   }
+}
+function updateFabCenter() {
+  const btn = $('fabCenter');
+  const icon = $('fabCenterIcon');
+  const lbl = $('fabCenterLabel');
+  btn.classList.remove('mode-heading','mode-north','mode-free');
+  if (trackMode === 'heading') { icon.textContent = '🧭'; lbl.textContent = 'HEADING'; btn.classList.add('mode-heading'); }
+  else if (trackMode === 'north') { icon.textContent = '⬆️'; lbl.textContent = 'NOORD'; btn.classList.add('mode-north'); }
+  else { icon.textContent = '⊕'; lbl.textContent = 'VRIJ'; btn.classList.add('mode-free'); }
 }
 
 function beep() {
@@ -1750,7 +1779,6 @@ function toggleSet(key, btnId) {
   state.settings[key] = !state.settings[key];
   $(btnId).classList.toggle('on', state.settings[key]);
   persist();
-  if (key === 'headingUp' && !state.settings.headingUp && map && typeof map.setBearing === 'function') map.setBearing(0);
   if (key === 'optimize' && state.settings.optimize) rebuildRoute(true).then(() => { drawStops(); updateNavCard(); });
 }
 function syncSettingsUI() {
@@ -1763,7 +1791,6 @@ function syncSettingsUI() {
   if ($('swAutoZoom')) $('swAutoZoom').classList.toggle('on', !!state.settings.autoZoom);
   $('swOpt').classList.toggle('on', state.settings.optimize);
   $('swSound').classList.toggle('on', state.settings.sound);
-  $('swHeading').classList.toggle('on', state.settings.headingUp !== false);
   $('swDark').classList.toggle('on', !!state.settings.darkMode);
   applyDark(!!state.settings.darkMode);
 }
@@ -2081,7 +2108,6 @@ function saveDriverProfile() {
     notifyDist: state.settings.notifyDist,
     radius: state.settings.radius,
     darkMode: state.settings.darkMode,
-    headingUp: state.settings.headingUp
   };
   try { localStorage.setItem(PROFILE_KEY + '_' + pid, JSON.stringify(profile)); } catch {}
 }
