@@ -62,7 +62,10 @@ header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
 /* nav screen */
 #scr-nav{position:relative;}
 #map{flex:1;min-height:120px;z-index:1;}
-#navTop{position:absolute;top:0;left:0;right:0;z-index:500;background:rgba(212,5,17,.97);color:#fff;padding:calc(env(safe-area-inset-top) + 8px) 12px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+#navTop{position:absolute;top:0;left:0;right:0;z-index:500;background:rgba(212,5,17,.97);color:#fff;padding:calc(env(safe-area-inset-top) + 5px) 12px 7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;cursor:pointer;}
+#navTop .meta{font-size:13px;opacity:.85;}
+#navTop:not(.expanded) .meta{display:none !important;}
+#navTop:not(.expanded) #nextRow{display:none !important;}
 #nextRow{flex-basis:100%;font-size:14px;font-weight:600;background:rgba(0,0,0,.25);border-radius:8px;padding:5px 9px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #navTop .dest{flex:1;min-width:0;}
 #navTop .street{font-size:24px;font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -116,8 +119,8 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 .mk.ooo{border:3px solid var(--red);}
 .mk.steeg{border:3px solid var(--green);}
 /* Multi-pakket: DHL geel i.p.v. paars */
-.mk.multi{background:var(--accent);}
-.stop-row.multi .num{background:var(--accent);color:#10141a;}
+.mk.multi{background:repeating-linear-gradient(135deg,var(--red) 0,var(--red) 6px,var(--accent) 6px,var(--accent) 12px);}
+.stop-row.multi .num{background:repeating-linear-gradient(135deg,var(--red) 0,var(--red) 5px,var(--accent) 5px,var(--accent) 10px);color:#fff;}
 #pkgWarn{position:absolute;left:0;right:0;z-index:520;background:#10141a;color:var(--accent);font-size:17px;font-weight:800;padding:10px 14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 #arrivePop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:850;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 26px;text-align:center;min-width:230px;border:4px solid var(--green);}
 #arrivePop.warn{border-color:var(--red);}
@@ -226,7 +229,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 
 <!-- SCHERM 4: NAVIGATIE -->
 <div id="scr-nav" class="screen">
-  <div id="navTop">
+  <div id="navTop" onclick="toggleNavExpand()">
     <div class="dest">
       <div class="street" id="navStreet">—</div>
       <div class="meta" id="navMeta">—</div>
@@ -533,6 +536,15 @@ function hav(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+async function osrmRouteSnap(from, to) {
+  // Snap beide punten naar de dichtstbijzijnde weg (max 50m) voor betere route-tracking
+  const cs = `${from.lon.toFixed(6)},${from.lat.toFixed(6)};${to.lon.toFixed(6)},${to.lat.toFixed(6)}`;
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=true&radiuses=50;50`);
+  if (!r.ok) throw new Error('OSRM snap ' + r.status);
+  const j = await r.json();
+  if (j.code !== 'Ok') throw new Error('OSRM snap: ' + j.code);
+  return j.routes[0];
+}
 async function osrmRoute(points, overview = 'full', withSteps = false) {
   const cs = points.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
   const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`);
@@ -754,6 +766,7 @@ async function chooseRide(i) {
   await rebuildRoute(true);
   $('loadbar').style.width = '100%';
   persist();
+  rideStartTime = Date.now(); rideCompleteShown = false;
   initMap();
   show('scr-nav');
   startGPS();
@@ -819,7 +832,7 @@ async function updateNavLine() {
   state.routeGeom = null;
   if (cur && cur.lat && origin) {
     try {
-      const route = await osrmRoute([origin, cur], 'full', true);
+      const route = await osrmRouteSnap(origin, cur);
       state.routeGeom = route.geometry;
       // Volgende afslag uit OSRM stappen
       state.routeSteps = [];
@@ -865,7 +878,8 @@ function initMap() {
   if (withPos.length) map.fitBounds(withPos.map(s => [s.lat, s.lon]), { padding: [40, 40] });
   else map.setView([52.35, 6.13], 13);
   map.on('dragstart', () => { follow = false; });
-  map.on('zoomend', drawHouseNumbers);
+  map.on('zoomstart', () => { saveNextZoom = true; });
+  map.on('zoomend', () => { if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); } saveNextZoom = false; drawHouseNumbers(); });
   drawStops(); drawRoute();
 }
 
@@ -948,6 +962,9 @@ async function requestWakeLock() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
 
 let spdEma = null, lastSpdFix = null, accBad = 0, accWarned = false;
+let saveNextZoom = false;
+let rideStartTime = 0, rideCompleteShown = false;
+let navExpanded = false;
 let limitVal = null, limitPos = null, limitTs = 0, limitBusy = false;
 
 function onPos(p) {
@@ -1017,8 +1034,9 @@ function onPos(p) {
     const mapH = map.getSize().y;
     const shiftPx = Math.round(mapH * 0.22);
     const z = map.getZoom();
+    const brRad = ((lastHeading || 0) * Math.PI / 180);
     const pt = map.project([lastPos.lat, lastPos.lon], z);
-    const shifted = L.point(pt.x, pt.y - shiftPx);
+    const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
     map.panTo(map.unproject(shifted, z), { animate: true, duration: 0.3 });
   }
   if (gpsLost) { gpsLost = false; updateNavCard(); }
@@ -1044,40 +1062,48 @@ function onPos(p) {
 
 /* ---------- SMOOTH GPS INTERPOLATIE ---------- */
 function smoothMarker() {
-  if (!interpFrom || !interpTo || !gpsMarker) { interpRaf = null; return; }
-  const progress = Math.min(1, (Date.now() - interpStart) / interpDur);
-  const lat = interpFrom.lat + (interpTo.lat - interpFrom.lat) * progress;
-  const lon = interpFrom.lon + (interpTo.lon - interpFrom.lon) * progress;
-  gpsMarker.setLatLng([lat, lon]);
-  if (progress < 1) {
-    interpRaf = requestAnimationFrame(smoothMarker);
+  if (!gpsMarker || !interpFrom || !interpTo) { interpRaf = null; return; }
+  const elapsed = (Date.now() - interpStart) / 1000;
+  const dur = interpDur / 1000;
+  let lat, lon;
+  if (elapsed <= dur) {
+    const p = elapsed / dur;
+    lat = interpFrom.lat + (interpTo.lat - interpFrom.lat) * p;
+    lon = interpFrom.lon + (interpTo.lon - interpFrom.lon) * p;
   } else {
-    interpRaf = null;
-    interpFrom = null;
+    // Dead reckoning: doorrij in dezelfde richting na de laatste GPS-fix (max 3s)
+    const extra = Math.min(elapsed - dur, 3.0);
+    const vLat = (interpTo.lat - interpFrom.lat) / dur;
+    const vLon = (interpTo.lon - interpFrom.lon) / dur;
+    lat = interpTo.lat + vLat * extra;
+    lon = interpTo.lon + vLon * extra;
   }
+  gpsMarker.setLatLng([lat, lon]);
+  interpRaf = requestAnimationFrame(smoothMarker);
 }
 
 
 /* ---------- AUTO-ZOOM BIJ BOCHTEN ---------- */
 function doAutoZoom() {
-  // Alleen zoomen als de bochtenindicator zichtbaar is (echte richtingsverandering)
-  if (!map || !state.routeSteps || !lastPos) return;
-  if ($('turnRow').style.display === 'none' || $('turnRow').style.display === '') return;
-  let nearestTurnDist = Infinity;
-  for (const step of state.routeSteps) {
-    if (!step.maneuver || step.maneuver.type === 'arrive' || step.maneuver.type === 'depart') continue;
-    if (step.maneuver.location) {
-      const d = hav(lastPos, { lat: step.maneuver.location[1], lon: step.maneuver.location[0] });
-      if (d < nearestTurnDist) nearestTurnDist = d;
+  if (!map || !lastPos) return;
+  // Basis-zoom op snelheid: langzaam = bebouwde kom (inzoomen), snel = buiten (uitzoomen)
+  const kmh = spdEma !== null ? Math.round(spdEma * 3.6) : 0;
+  const preferred = state.settings.preferredZoom || 16;
+  let baseZoom = kmh > 60 ? Math.min(preferred, 15) : kmh > 30 ? Math.min(preferred, 16) : preferred;
+  // Bochten: dichter inzoomen naarmate de bocht nadert
+  if (state.routeSteps && state.routeSteps.length && $('turnRow').style.display === 'flex') {
+    let nearestTurnDist = Infinity;
+    for (const step of state.routeSteps) {
+      if (!step.maneuver || step.maneuver.type === 'arrive' || step.maneuver.type === 'depart') continue;
+      if (step.maneuver.location) {
+        const d = hav(lastPos, { lat: step.maneuver.location[1], lon: step.maneuver.location[0] });
+        if (d < nearestTurnDist) nearestTurnDist = d;
+      }
     }
+    if (nearestTurnDist < 150) baseZoom = Math.max(baseZoom, 18);
+    else if (nearestTurnDist < 400) baseZoom = Math.max(baseZoom, 17);
   }
-  if (nearestTurnDist === Infinity) return;
-  let targetZoom;
-  if (nearestTurnDist < 80) targetZoom = 18;
-  else if (nearestTurnDist < 200) targetZoom = 17;
-  else if (nearestTurnDist < 500) targetZoom = 16;
-  else targetZoom = 15;
-  if (Math.abs(map.getZoom() - targetZoom) >= 1) map.setZoom(targetZoom, { animate: true });
+  if (Math.abs(map.getZoom() - baseZoom) >= 1) { saveNextZoom = false; map.setZoom(baseZoom, { animate: true }); }
 }
 
 /* ---------- VERBLIJFTIJD (DWELL TIME) ---------- */
@@ -1438,7 +1464,19 @@ async function refreshSpeedLimit() {
   limitBusy = false;
 }
 
-function toggleFollow() { follow = true; if (lastPos && map) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 17)); }
+function toggleFollow() {
+  follow = true;
+  if (lastPos && map) {
+    const mapH = map.getSize().y;
+    const shiftPx = Math.round(mapH * 0.22);
+    const z = Math.max(map.getZoom(), 17);
+    const brRad = ((lastHeading || 0) * Math.PI / 180);
+    saveNextZoom = false;
+    const pt = map.project([lastPos.lat, lastPos.lon], z);
+    const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
+    map.setView(map.unproject(shifted, z), z, { animate: true });
+  }
+}
 
 function beep() {
   if (!state.settings.sound) return;
@@ -1459,6 +1497,12 @@ function arrive(stop) {
 }
 
 /* ---------- NAVIGATIEKAART (bovenbalk) ---------- */
+function fmtTurnDist(d) {
+  if (d >= 1000) return (d / 1000).toFixed(1) + ' km';
+  if (d >= 500)  return (Math.round(d / 100) * 100) + ' m';
+  if (d >= 200)  return (Math.round(d / 50) * 50) + ' m';
+  return (Math.round(d / 25) * 25) + ' m';
+}
 function fmtEta(sec) {
   const t = new Date(sec * 1000);
   return t.getUTCHours() ? `${t.getUTCHours()}u${String(t.getUTCMinutes()).padStart(2,'0')}` : `${t.getUTCMinutes()} min`;
@@ -1477,6 +1521,7 @@ function updateNavCard() {
     $('nextRow').style.display = 'none';
     $('turnRow').style.display = 'none';
     saveDriverProfile();
+    if (!rideCompleteShown) { rideCompleteShown = true; showRideComplete(); }
     return;
   }
   if (cur.isDepot) {
@@ -1492,13 +1537,15 @@ function updateNavCard() {
   }
   $('navStreet').textContent = `${cur.street} ${cur.huisnr}${cur.toevoeging ? ' ' + cur.toevoeging.replace(/^-/, '') : ''}`;
   const last = state.legInfo[state.legInfo.length - 1];
-  $('navMeta').textContent =
-    `Stop ${done + 1}/${total} · ${cur.postcode} ${cur.city} · slot ${cur.window}` +
+  const metaFull = `Stop ${done + 1}/${total} · ${cur.postcode} ${cur.city} · slot ${cur.window}` +
     (cur.steeg ? ' · 🚶 STEEG +' + cur.steegOther : '') +
     (cur.afhaal ? ' · 📦 AFHAAL' : '') +
     (state.routeDist ? ` · ${(state.routeDist / 1000).toFixed(1)} km route` : '') +
     (last ? ` · klaar ±${new Date(Date.now() + last.cumDur * 1000).toTimeString().slice(0, 5)}` : '') +
     (state.optSaving ? ` · opt. -${state.optSaving} min` : '');
+  const metaCompact = `Stop ${done + 1}/${total}` + (cur.steeg ? ' · 🚶' : '') + (cur.afhaal ? ' · 📦 AFHAAL' : '');
+  $('navMeta').dataset.full = metaFull;
+  $('navMeta').textContent = navExpanded ? metaFull : metaCompact;
   const li = state.legInfo.find(l => l.stop === cur);
   $('navEta').textContent = li ? fmtEta(li.cumDur) : '';
   if (!lastPos) $('navDist').firstChild.textContent = '—';
@@ -1507,12 +1554,48 @@ function updateNavCard() {
   const nxt = [];
   if (pendList[1]) nxt.push(fmtN(pendList[1]));
   if (pendList[2] && window.innerWidth >= 700) nxt.push(fmtN(pendList[2]));
-  if (nxt.length) {
+  if (nxt.length && navExpanded) {
     $('nextRow').style.display = 'block';
     $('nextRow').textContent = 'Daarna: ' + nxt.join('   →   ');
   } else $('nextRow').style.display = 'none';
   updateTurnRow();
   updatePkgWarn();
+}
+
+function toggleNavExpand() {
+  navExpanded = !navExpanded;
+  $('navTop').classList.toggle('expanded', navExpanded);
+  updateNavCard();
+}
+
+function showRideComplete() {
+  const done = state.stops.filter(s => s.status === 'done' && !s.isDepot).length;
+  const skipped = state.stops.filter(s => s.status === 'skipped').length;
+  const pkgs = state.stops.filter(s => s.status === 'done' && !s.isDepot)
+    .reduce((n, s) => n + (s.seqs ? s.seqs.length : 1), 0);
+  const durMs = rideStartTime ? Date.now() - rideStartTime : 0;
+  const durH = Math.floor(durMs / 3600000);
+  const durM = Math.floor((durMs % 3600000) / 60000);
+  const durStr = durH > 0 ? `${durH}u ${durM} min` : `${durM} min`;
+  const sph = durMs > 60000 ? (done / (durMs / 3600000)).toFixed(1) : '—';
+  const el = $('rideCompleteScreen');
+  if (!el) return;
+  const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:14px;padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1">${val}</div><div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px">${lbl}</div></div>`;
+  el.innerHTML =
+    '<div style="padding:calc(env(safe-area-inset-top)+24px) 20px 30px;max-width:480px;margin:0 auto;text-align:center">' +
+    '<div style="font-size:72px;line-height:1;margin-bottom:8px">🎉</div>' +
+    '<h2 style="margin:0 0 4px;font-size:30px;color:#fff;font-weight:900">Rit voltooid!</h2>' +
+    '<p style="color:rgba(255,255,255,.75);margin:0 0 24px;font-size:16px">Goed werk vandaag!</p>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">' +
+    stat(done, 'stops afgerond') +
+    stat(pkgs, 'pakketten bezorgd') +
+    stat(durStr, 'rijtijd') +
+    stat(sph, 'stops per uur') +
+    '</div>' +
+    (skipped > 0 ? `<div style="background:rgba(255,200,0,.25);border-radius:12px;padding:10px 14px;margin-bottom:16px;color:#fff;font-size:14px">⚠️ ${skipped} stop(s) overgeslagen</div>` : '') +
+    '<button onclick="$(\'rideCompleteScreen\').style.display=\'none\'" style="width:100%;background:#fff;color:#d40511;border:none;border-radius:16px;font-size:18px;font-weight:800;padding:16px;cursor:pointer">Sluiten ✕</button>' +
+    '</div>';
+  el.style.display = 'block';
 }
 
 /* ---------- STOPACTIES ---------- */
@@ -1682,6 +1765,7 @@ function resumeRide() {
   state.rides = [{ rit: saved.ride.rit, bezorger: saved.ride.bezorger, datum: saved.ride.datum, bezorgerId: saved.ride.bezorgerId, stops: [] }];
   state.rideIdx = 0;
   syncSettingsUI();
+  rideStartTime = rideStartTime || Date.now(); rideCompleteShown = false;
   initMap();
   show('scr-nav');
   startGPS();
@@ -1829,7 +1913,7 @@ function updateTurnRow() {
   const modifier = (best.maneuver.modifier || '').replace(/ /g, '-');
   const type = best.maneuver.type === 'turn' ? 'turn-' + modifier : best.maneuver.type;
   const icon = TURN_ICONS[type] || TURN_ICONS['turn-' + modifier] || '↑';
-  const dist = bestD > 950 ? (bestD / 1000).toFixed(1) + ' km' : Math.round(bestD) + ' m';
+  const dist = fmtTurnDist(bestD);
   const name = best.name ? best.name : '';
   $('turnArrow').textContent = icon;
   $('turnText').textContent = `Over ${dist}${name ? ' → ' + name : ''}`;
@@ -2004,6 +2088,9 @@ function loadDriverProfile(bezorgerId) {
 }
 </script>
 
+<!-- RITOVERZICHT -->
+<div id="rideCompleteScreen" style="display:none;position:fixed;inset:0;background:linear-gradient(160deg,#d40511 0%,#8a0008 100%);z-index:3600;overflow-y:auto;"></div>
+
 <!-- ADMIN LOGIN MODAL -->
 <div id="adminLoginModal">
   <div class="alCard">
@@ -2018,12 +2105,4 @@ function loadDriverProfile(bezorgerId) {
 
 <!-- ADMIN PANEL -->
 <div id="adminPanel">
-  <div class="aHead">
-    <h2>⚙ Admin paneel</h2>
-    <button class="x" onclick="closeAdmin()" style="color:#fff;background:rgba(255,255,255,.2)">✕</button>
-  </div>
-  <div id="adminContent"></div>
-</div>
-
-</body>
-</
+  <div cl
