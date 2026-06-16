@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Build 17: deploy-pijplijn test via OneDrive (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -117,7 +118,7 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 .mk.skipped{background:var(--grey);}
 .mk.current{background:var(--accent);color:#10141a;animation:pulse 1.2s infinite;font-size:16px;}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,204,0,.7);}70%{box-shadow:0 0 0 16px rgba(255,204,0,0);}100%{box-shadow:0 0 0 0 rgba(255,204,0,0);}}
-.mk-gps{background:#1565d8;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(21,101,216,.35);}
+.mk-gps{width:38px;height:38px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 4px rgba(21,101,216,.6));}
 .hnr-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;}
 .mk.ooo{border:3px solid var(--red);}
 .mk.steeg{border:3px solid var(--green);}
@@ -1071,7 +1072,10 @@ function onPos(p) {
   if (!gpsMarker) {
     const el = document.createElement('div');
     el.className = 'mk-gps';
-    el.innerHTML = '<svg viewBox="0 0 24 24" style="width:32px;height:32px;display:block"><path fill="#d40511" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/><circle cx="12" cy="12" r="4" fill="#fff" opacity=".7"/></svg>';
+    const gpsImg = new Image();
+    gpsImg.src = 'gps-icon.png';
+    gpsImg.onload = () => { el.innerHTML = '<img src="gps-icon.png" style="width:38px;height:38px;display:block">'; };
+    gpsImg.onerror = () => { el.innerHTML = '<svg viewBox="0 0 24 24" style="width:32px;height:32px"><path fill="#d40511" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>'; };
     gpsMarker = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'map', rotation: 0 })
       .setLngLat([lastPos.lon, lastPos.lat]).addTo(map);
     interpFrom = null;
