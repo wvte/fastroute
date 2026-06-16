@@ -10,10 +10,9 @@
 <title>RouteFast Planner</title>
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <style>
 :root{
   --blue:#d40511; --accent:#ffcc00; --green:#1e9e4a; --red:#b00310; --grey:#8a93a0; --dark:#1c2733;
@@ -346,6 +345,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Auto-zoom bij bochten</span><button class="switch" id="swAutoZoom" onclick="toggleSet('autoZoom','swAutoZoom')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
+      <div class="setrow"><span>GPS-positie op scherm: <b id="offsetVal"></b>%</span><input type="range" min="0" max="45" step="5" id="gpsOffset" oninput="setGpsOffset(this.value)"></div>
       <div style="padding:14px 4px;border-bottom:1px solid #eef1f5">
         <div style="font-size:17px;margin-bottom:8px">🏠 Depot (terugkeer na laatste stop)</div>
         <input class="txt" id="depotAddr" placeholder="bijv. Wattstraat 3, Raalte">
@@ -390,7 +390,7 @@ let state = {
   rideIdx: -1,
   stops: [],
   settings: { radius: 35, autoAdvance: true, optimize: true, sound: true, autoZoom: false, houseNumbers: true,
-    headingUp: true, notifyDist: 60, darkMode: false,
+    headingUp: true, notifyDist: 60, darkMode: false, gpsOffset: 22,
     depot: { label: 'Wattstraat 3, Raalte', lat: null, lon: null } },
   routeGeom: null,
   routeSteps: [],       // OSRM stappen voor volgende afslag
@@ -398,7 +398,7 @@ let state = {
   optSaving: 0,
   routeDist: 0
 };
-let map = null, gpsMarker = null, gpsIconUrl = null, accCircle = null, stopMarkers = [], routeLine = null, hnrLayer = null;
+let map = null, gpsMarker = null, stopMarkers = [], hnrLayer = null;
 let watchId = null, lastPos = null, lastHeading = null, wakeLock = null;
 let trackMode = 'heading'; // 'heading' | 'north' | 'free'
 // Bearing-smoothing: low-pass filter op hoek (voorkomt schokkerige kaartrotatie)
@@ -633,7 +633,7 @@ function activeScreen() {
 function applyScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
-  if (id === 'scr-nav' && map) setTimeout(() => map.invalidateSize(), 150);
+  if (id === 'scr-nav' && map) setTimeout(() => map.resize(), 150);
 }
 function show(id) {
   applyScreen(id);
@@ -874,89 +874,103 @@ async function updateNavLine() {
 }
 
 /* ---------- CUSTOM GPS ICON (optioneel: plaats gps-icon.png in de app-map) ---------- */
-function loadGpsIcon() {
-  const img = new Image();
-  img.onload = () => { gpsIconUrl = 'gps-icon.png'; if (gpsMarker) updateGpsMarkerIcon(); };
-  img.onerror = () => { gpsIconUrl = null; };
-  img.src = 'gps-icon.png';
-}
-function updateGpsMarkerIcon() {
-  if (!gpsMarker) return;
-  if (gpsIconUrl) {
-    gpsMarker.setIcon(L.icon({ iconUrl: gpsIconUrl, iconSize: [36, 36], iconAnchor: [18, 18] }));
-  } else {
-    gpsMarker.setIcon(L.divIcon({ className: 'mk-gps', iconSize: [20, 20], iconAnchor: [10, 10] }));
-  }
+/* GPS-icoon via MapLibre HTML-marker (geen loadGpsIcon nodig) */
+
+/* ---------- KAART (MapLibre GL) ---------- */
+function mapCenter() {
+  // GPS-centrering met offset — één call doet alles vloeiend
+  if (!map || !lastPos || trackMode === 'free') return;
+  const screenH = map.getContainer().clientHeight;
+  const offsetFrac = (state.settings.gpsOffset != null ? state.settings.gpsOffset : 22) / 100;
+  map.easeTo({
+    center: [lastPos.lon, lastPos.lat],
+    bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
+    offset: [0, screenH * offsetFrac],
+    duration: 600,
+    essential: true
+  });
 }
 
-/* ---------- KAART ---------- */
 function initMap() {
   if (map) { drawStops(); drawRoute(); return; }
-  loadGpsIcon();
-  map = L.map('map', { zoomControl: false, attributionControl: true, rotate: true, bearing: 0 });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap'
-  }).addTo(map);
+  map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/bright',
+    center: [6.13, 52.35],
+    zoom: state.settings.preferredZoom || 13,
+    bearing: 0,
+    pitch: 0,
+    attributionControl: false
+  });
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+  map.on('load', () => {
+    // Route-lijn als GeoJSON layer
+    map.addSource('route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
+    map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#d40511', 'line-width': 7, 'line-opacity': 0.85 } });
+    // Accuracy-cirkel als puls
+    map.addSource('gps-acc', { type: 'geojson', data: { type: 'Feature', properties: { acc: 20 }, geometry: { type: 'Point', coordinates: [6.13, 52.35] } } });
+    map.addLayer({ id: 'gps-acc', type: 'circle', source: 'gps-acc', paint: { 'circle-color': '#2563eb', 'circle-opacity': 0.12, 'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 10, 0, 20, ['/', ['get', 'acc'], 0.075]], 'circle-stroke-width': 1, 'circle-stroke-color': '#2563eb', 'circle-stroke-opacity': 0.4 } });
+    drawStops(); drawRoute();
+  });
   const withPos = state.stops.filter(s => s.lat);
-  if (withPos.length) map.fitBounds(withPos.map(s => [s.lat, s.lon]), { padding: [40, 40] });
-  else map.setView([52.35, 6.13], 13);
+  if (withPos.length) {
+    const lons = withPos.map(s => s.lon), lats = withPos.map(s => s.lat);
+    map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 60, maxZoom: 16 });
+  }
   map.on('dragstart', () => { if (trackMode !== 'free') { trackMode = 'free'; updateFabCenter(); } });
   map.on('zoomstart', () => { saveNextZoom = true; });
-  map.on('zoomend', () => { if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); } saveNextZoom = false; drawHouseNumbers(); });
-  drawStops(); drawRoute();
+  map.on('zoomend', () => { if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); } saveNextZoom = false; });
 }
 
 function currentStop() { return state.stops.find(s => s.status === 'pending'); }
 
 function drawStops() {
-  stopMarkers.forEach(m => map.removeLayer(m)); stopMarkers = [];
+  stopMarkers.forEach(m => m.remove()); stopMarkers = [];
+  if (!map) return;
   const cur = currentStop();
   const ooo = outOfOrderSet();
   state.stops.forEach(s => {
     if (!s.lat) return;
     const isCur = s === cur;
+    const el = document.createElement('div');
     if (s.isDepot) {
       const size = isCur ? 44 : 36;
-      const icon = L.divIcon({
-        className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-        html: `<div class="mk ${isCur ? 'current' : s.status}" style="width:${size}px;height:${size}px;background:#10141a;font-size:17px">${s.status === 'done' ? '✓' : '🏠'}</div>`
-      });
-      const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: isCur ? 1000 : 500 }).addTo(map);
-      m.on('click', () => openStopMenu(state.stops.indexOf(s)));
-      stopMarkers.push(m);
-      return;
+      el.innerHTML = `<div class="mk ${isCur ? 'current' : s.status}" style="width:${size}px;height:${size}px;background:#10141a;font-size:17px">${s.status === 'done' ? '✓' : '🏠'}</div>`;
+    } else {
+      const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steeg ? ' steeg' : (s.seqs ? ' multi' : ''));
+      const size = isCur ? 44 : 30;
+      el.innerHTML = `<div class="mk ${cls}" style="width:${size}px;height:${size}px">${s.status === 'done' ? '✓' : markerLabel(s)}</div>`;
     }
-    const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steeg ? ' steeg' : (s.seqs ? ' multi' : ''));
-    const size = isCur ? 44 : 30;
-    const icon = L.divIcon({
-      className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-      html: `<div class="mk ${cls}" style="width:${size}px;height:${size}px">${s.status === 'done' ? '✓' : markerLabel(s)}</div>`
-    });
-    const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: isCur ? 1000 : 0 }).addTo(map);
-    m.on('click', () => openStopMenu(state.stops.indexOf(s)));
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => openStopMenu(state.stops.indexOf(s)));
+    const m = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lon, s.lat]).addTo(map);
     stopMarkers.push(m);
   });
-  drawHouseNumbers();
 }
 
 function drawHouseNumbers() {
-  if (hnrLayer) { map.removeLayer(hnrLayer); hnrLayer = null; }
+  // Huisnummers als overlay via MapLibre markers
+  if (hnrLayer) { hnrLayer.forEach(m => m.remove()); hnrLayer = null; }
   if (!state.settings.houseNumbers || !map || map.getZoom() < 16) return;
-  hnrLayer = L.layerGroup();
+  hnrLayer = [];
   state.stops.forEach(s => {
     if (!s.lat) return;
-    L.marker([s.lat, s.lon], {
-      icon: L.divIcon({ className: 'hnr-label', html: s.huisnr + (s.toevoeging ? s.toevoeging.replace('-', '') : ''), iconAnchor: [-16, 8] }),
-      interactive: false
-    }).addTo(hnrLayer);
+    const el = document.createElement('div');
+    el.className = 'hnr-label';
+    el.textContent = s.huisnr + (s.toevoeging ? s.toevoeging.replace('-', '') : '');
+    el.style.pointerEvents = 'none';
+    hnrLayer.push(new maplibregl.Marker({ element: el, anchor: 'left' }).setLngLat([s.lon, s.lat]).addTo(map));
   });
-  hnrLayer.addTo(map);
 }
 
 function drawRoute() {
-  if (routeLine) { map && map.removeLayer(routeLine); routeLine = null; }
-  if (!map || !state.routeGeom) return;
-  routeLine = L.geoJSON(state.routeGeom, { style: { color: '#d40511', weight: 7, opacity: .85 } }).addTo(map);
+  if (!map) return;
+  const src = map.getSource('route');
+  if (!src) return; // nog niet geladen
+  src.setData({
+    type: 'Feature', properties: {},
+    geometry: state.routeGeom || { type: 'LineString', coordinates: [] }
+  });
 }
 
 /* ---------- GPS & AUTO-AFVINKEN ---------- */
@@ -1053,33 +1067,21 @@ function onPos(p) {
   refreshSpeedLimit();
 
   if (!map) return;
+  // GPS-marker aanmaken of accuracy-cirkel updaten
   if (!gpsMarker) {
-    const icon = gpsIconUrl
-      ? L.icon({ iconUrl: gpsIconUrl, iconSize: [36, 36], iconAnchor: [18, 18] })
-      : L.divIcon({ className: 'mk-gps', iconSize: [20, 20], iconAnchor: [10, 10] });
-    gpsMarker = L.marker([lastPos.lat, lastPos.lon], { icon, zIndexOffset: 2000, rotationOrigin: 'center' }).addTo(map);
-    accCircle = L.circle([lastPos.lat, lastPos.lon], { radius: lastPos.acc, weight: 1, fillOpacity: .08 }).addTo(map);
-    interpFrom = null; // geen interpolatie bij eerste fix
-  } else {
-    accCircle.setLatLng([lastPos.lat, lastPos.lon]).setRadius(lastPos.acc);
+    const el = document.createElement('div');
+    el.className = 'mk-gps';
+    el.innerHTML = '<svg viewBox="0 0 24 24" style="width:32px;height:32px;display:block"><path fill="#d40511" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/><circle cx="12" cy="12" r="4" fill="#fff" opacity=".7"/></svg>';
+    gpsMarker = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'viewport', rotation: 0 })
+      .setLngLat([lastPos.lon, lastPos.lat]).addTo(map);
+    interpFrom = null;
   }
-  if (lastHeading != null && gpsMarker.setRotationAngle) gpsMarker.setRotationAngle(lastHeading);
-
-  if (trackMode !== 'free' && map) {
-    const mapH = map.getSize().y;
-    const z = map.getZoom();
-    if (trackMode === 'heading') {
-      // Offset in rijrichting: meer van de weg vooruit zien
-      const shiftPx = Math.round(mapH * 0.22);
-      const brRad = ((lastHeading || 0) * Math.PI / 180);
-      const pt = map.project([lastPos.lat, lastPos.lon], z);
-      const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
-      map.panTo(map.unproject(shifted, z), { animate: true, duration: 0.3 });
-    } else {
-      // Noord-modus: exact centreren
-      map.panTo([lastPos.lat, lastPos.lon], { animate: true, duration: 0.3 });
-    }
-  }
+  if (lastHeading != null) gpsMarker.setRotation(lastHeading);
+  // Accuracy-cirkel via GeoJSON source
+  const accSrc = map.getSource('gps-acc');
+  if (accSrc) accSrc.setData({ type: 'Feature', properties: { acc: lastPos.acc }, geometry: { type: 'Point', coordinates: [lastPos.lon, lastPos.lat] } });
+  // GPS-centrering: één vloeiende easeTo-call
+  mapCenter();
   if (gpsLost) { gpsLost = false; updateNavCard(); }
 
   const cur = currentStop();
@@ -1119,7 +1121,7 @@ function smoothMarker() {
     lat = interpTo.lat + vLat * extra;
     lon = interpTo.lon + vLon * extra;
   }
-  gpsMarker.setLatLng([lat, lon]);
+  gpsMarker.setLngLat([lon, lat]);
   interpRaf = requestAnimationFrame(smoothMarker);
 }
 
@@ -1144,7 +1146,7 @@ function doAutoZoom() {
     if (nearestTurnDist < 150) baseZoom = Math.max(baseZoom, 18);
     else if (nearestTurnDist < 400) baseZoom = Math.max(baseZoom, 17);
   }
-  if (Math.abs(map.getZoom() - baseZoom) >= 1) { saveNextZoom = false; map.setZoom(baseZoom, { animate: true }); }
+  if (Math.abs(map.getZoom() - baseZoom) >= 1) { saveNextZoom = false; map.easeTo({ zoom: baseZoom, duration: 600 }); }
 }
 
 /* ---------- VERBLIJFTIJD (DWELL TIME) ---------- */
@@ -1512,20 +1514,18 @@ function cycleFabCenter() {
   else trackMode = 'heading';
   updateFabCenter();
   if (lastPos && map) {
-    const z = Math.max(map.getZoom(), 16);
     saveNextZoom = false;
-    if (trackMode === 'heading') {
-      const mapH = map.getSize().y;
-      const shiftPx = Math.round(mapH * 0.22);
-      const brRad = ((lastHeading || 0) * Math.PI / 180);
-      const pt = map.project([lastPos.lat, lastPos.lon], z);
-      const shifted = L.point(pt.x + shiftPx * Math.sin(brRad), pt.y - shiftPx * Math.cos(brRad));
-      map.setView(map.unproject(shifted, z), z, { animate: true });
-      if (map && typeof map.setBearing === 'function' && lastHeading != null) map.setBearing(lastHeading);
-    } else {
-      map.setView([lastPos.lat, lastPos.lon], z, { animate: true });
-      if (map && typeof map.setBearing === 'function') map.setBearing(0);
-    }
+    const z = Math.max(map.getZoom(), 16);
+    const screenH = map.getContainer().clientHeight;
+    const offsetFrac = (state.settings.gpsOffset != null ? state.settings.gpsOffset : 22) / 100;
+    map.easeTo({
+      center: [lastPos.lon, lastPos.lat],
+      zoom: z,
+      bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
+      offset: [0, screenH * offsetFrac],
+      duration: 500,
+      essential: true
+    });
   }
 }
 function updateFabCenter() {
@@ -1794,6 +1794,7 @@ async function addStop(mode) {
 /* ---------- INSTELLINGEN ---------- */
 function setRadius(v) { state.settings.radius = +v; $('radVal').textContent = v; persist(); }
 function setNotifyDist(v) { state.settings.notifyDist = +v; $('notifyVal').textContent = v; persist(); }
+function setGpsOffset(v) { state.settings.gpsOffset = +v; $('offsetVal').textContent = v; persist(); }
 function toggleSet(key, btnId) {
   state.settings[key] = !state.settings[key];
   $(btnId).classList.toggle('on', state.settings[key]);
@@ -1810,6 +1811,8 @@ function syncSettingsUI() {
   if ($('swAutoZoom')) $('swAutoZoom').classList.toggle('on', !!state.settings.autoZoom);
   $('swOpt').classList.toggle('on', state.settings.optimize);
   $('swSound').classList.toggle('on', state.settings.sound);
+  const ov = state.settings.gpsOffset != null ? state.settings.gpsOffset : 22;
+  $('gpsOffset').value = ov; $('offsetVal').textContent = ov;
   $('swDark').classList.toggle('on', !!state.settings.darkMode);
   applyDark(!!state.settings.darkMode);
 }
