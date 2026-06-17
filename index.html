@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 18: nieuwe UI met Lucide iconen en DHL stijl (17-06-2026) -->
+<!-- Build 19: vloeiender draaien, auto-afronden op depot, snap naar weg (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -503,7 +503,7 @@ let watchId = null, lastPos = null, lastHeading = null, wakeLock = null;
 let trackMode = 'heading'; // 'heading' | 'north' | 'free'
 // Bearing-smoothing: low-pass filter op hoek (voorkomt schokkerige kaartrotatie)
 let bearingSmooth = null;
-const BEARING_ALPHA = 0.25; // 0=nooit updaten, 1=direct — hoger = reageert sneller
+const BEARING_ALPHA = 0.5; // 0=nooit updaten, 1=direct — hoger = reageert sneller
 function smoothBearing(prev, next, a) {
   if (prev == null) return next;
   const pR = prev * Math.PI/180, nR = next * Math.PI/180;
@@ -987,7 +987,7 @@ function mapCenter() {
     center: [lastPos.lon, lastPos.lat],
     bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
     offset: [0, screenH * offsetFrac],
-    duration: 600,
+    duration: 450,
     essential: true
   });
 }
@@ -1134,10 +1134,8 @@ function onPos(p) {
       lastHeading = bearingSmooth;
     }
   }
-  if (map && typeof map.setBearing === 'function') {
-    if (trackMode === 'heading' && lastHeading != null) map.setBearing(lastHeading);
-    else if (trackMode === 'north') map.setBearing(0);
-  }
+  // Kaartrotatie wordt vloeiend afgehandeld in mapCenter() (heading + noord).
+  // Niet meer direct setBearing hier: dat veroorzaakte het schokkerige dubbel draaien.
 
   if (p.coords.accuracy > 150) {
     if (++accBad >= 3 && !accWarned) {
@@ -1200,6 +1198,11 @@ function onPos(p) {
     const notifyD = state.settings.notifyDist || 60;
     if (d <= notifyD && popStop !== cur) { popStop = cur; if (!cur.isDepot) showArrivePop(cur); }
     if (d > notifyD * 2.2 && popStop === cur) hideArrivePop();
+    if (cur.isDepot && d <= 200) {
+      // Terug op het depot: rit automatisch afronden en overzicht tonen
+      arrive(cur);
+      return;
+    }
     if (state.settings.autoAdvance && d <= state.settings.radius && Date.now() - arriveLock > 8000) {
       arriveLock = Date.now();
       arrive(cur);
@@ -1225,10 +1228,40 @@ function smoothMarker() {
     lat = interpTo.lat + vLat * extra;
     lon = interpTo.lon + vLon * extra;
   }
-  gpsMarker.setLngLat([lon, lat]);
+  let dLat = lat, dLon = lon;
+  if (trackMode !== 'free') {
+    const snap = snapToRoute(lat, lon);
+    if (snap && snap.dist < 30) { dLat = snap.lat; dLon = snap.lon; }
+  }
+  gpsMarker.setLngLat([dLon, dLat]);
   interpRaf = requestAnimationFrame(smoothMarker);
 }
 
+
+/* ---------- SNAP NAAR DE WEG ----------
+   Projecteer de GPS-positie op de getekende routelijn. Staat de positie maar
+   iets naast de weg (< 30 m), dan tonen we de marker op de weg zodat marker en
+   navigatielijn samenvallen. Verder weg = niet snappen (echte afwijking blijft zichtbaar). */
+function snapToRoute(lat, lon) {
+  const g = state.routeGeom;
+  if (!g || !g.coordinates || g.coordinates.length < 2) return null;
+  const c = g.coordinates;
+  const kx = Math.cos(lat * Math.PI / 180);
+  const px = lon * kx, py = lat;
+  let bestLon = 0, bestLat = 0, bestD2 = Infinity;
+  for (let i = 0; i < c.length - 1; i++) {
+    const ax = c[i][0] * kx, ay = c[i][1], bx = c[i + 1][0] * kx, by = c[i + 1][1];
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const sx = ax + dx * t, sy = ay + dy * t;
+    const ex = px - sx, ey = py - sy;
+    const d2 = ex * ex + ey * ey;
+    if (d2 < bestD2) { bestD2 = d2; bestLon = sx / kx; bestLat = sy; }
+  }
+  return { lat: bestLat, lon: bestLon, dist: Math.sqrt(bestD2) * 111320 };
+}
 
 /* ---------- AUTO-ZOOM BIJ BOCHTEN ---------- */
 function doAutoZoom() {
@@ -1742,6 +1775,8 @@ function showRideComplete() {
   const durM = Math.floor((durMs % 3600000) / 60000);
   const durStr = durH > 0 ? `${durH}u ${durM} min` : `${durM} min`;
   const sph = durMs > 60000 ? (done / (durMs / 3600000)).toFixed(1) : '—';
+  const perStop = (done > 0 && durMs > 60000) ? Math.round(durMs / 60000 / done) + ' min' : '—';
+  const eindTijd = new Date().toTimeString().slice(0, 5);
   const el = $('rideCompleteScreen');
   if (!el) return;
   const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:14px;padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1">${val}</div><div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px">${lbl}</div></div>`;
@@ -1755,6 +1790,8 @@ function showRideComplete() {
     stat(pkgs, 'pakketten bezorgd') +
     stat(durStr, 'rijtijd') +
     stat(sph, 'stops per uur') +
+    stat(perStop, 'gem. per stop') +
+    stat(eindTijd, 'klaar om') +
     '</div>' +
     (skipped > 0 ? `<div style="background:rgba(255,200,0,.25);border-radius:12px;padding:10px 14px;margin-bottom:16px;color:#fff;font-size:14px">${ic('alert','sm')} ${skipped} stop(s) overgeslagen</div>` : '') +
     '<button onclick="$(\'rideCompleteScreen\').style.display=\'none\'" style="width:100%;background:#fff;color:#d40511;border:none;border-radius:16px;font-size:18px;font-weight:800;padding:16px;cursor:pointer">Sluiten</button>' +
