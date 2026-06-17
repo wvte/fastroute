@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 17: deploy-pijplijn test via OneDrive (17-06-2026) -->
+<!-- Build 18: nieuwe UI met Lucide iconen en DHL stijl (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -16,12 +16,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
-  --blue:#d40511; --accent:#ffcc00; --green:#1e9e4a; --red:#b00310; --grey:#8a93a0; --dark:#1c2733;
-  --bg:#f7f6f3; --card:#ffffff; --text:#10141a;
+  /* DHL kleuren — rood is de hoofdkleur (heet --blue om legacy redenen), geel is accent */
+  --blue:#d40511; --blue-dark:#b00310; --accent:#ffcc00; --accent-dark:#e0ac00;
+  --green:#1e9e4a; --red:#c2261c; --grey:#8a93a0; --dark:#1c2733;
+  --bg:#f2f3f6; --card:#ffffff; --text:#161a20; --text-soft:#5b6470; --border:#e7eaf0;
+  --radius:18px; --radius-lg:24px; --radius-sm:12px;
+  --shadow-sm:0 1px 2px rgba(16,20,26,.06),0 2px 6px rgba(16,20,26,.06);
+  --shadow-md:0 6px 20px rgba(16,20,26,.12);
+  --shadow-lg:0 12px 34px rgba(16,20,26,.20);
+  --font:-apple-system,'SF Pro',Segoe UI,Roboto,system-ui,sans-serif;
 }
 /* Dark mode */
-body.dark{--bg:#0f1520;--card:#1a2235;--text:#e4eaf3;}
-body.dark header.bar{background:#8a0008;}
+body.dark{--bg:#0d1118;--card:#171f2e;--text:#e8edf5;--text-soft:#97a3b6;--border:#2a3550;}
+body.dark header.bar{background:linear-gradient(180deg,#9c0009,#7e0007);}
 body.dark .ride-item,body.dark .card{background:var(--card);color:var(--text);}
 body.dark #rideSearch{background:var(--card);color:var(--text);border-color:#2a3a55;}
 body.dark .panel .sheet,body.dark #arrivePop,body.dark #notesPop{background:var(--card);color:var(--text);}
@@ -30,39 +37,46 @@ body.dark .stop-row.current{background:#1f2d1a;}
 body.dark input.txt,body.dark #addNote,body.dark #addPC,body.dark #addNR,body.dark #depotAddr{background:#0f1520;color:var(--text);border-color:#2a3a55;}
 body.dark #arrivePop .apPkg{background:#0f1520;}
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-html,body{margin:0;padding:0;height:100%;font-family:-apple-system,'SF Pro',Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);overscroll-behavior:none;}
+html,body{margin:0;padding:0;height:100%;font-family:var(--font);background:var(--bg);color:var(--text);overscroll-behavior:none;-webkit-font-smoothing:antialiased;letter-spacing:-.01em;}
 body{height:100dvh;} /* geen dode witte balk onder de knoppen op iOS */
 .screen{display:none;height:100%;flex-direction:column;}
 .screen.active{display:flex;}
-header.bar{background:var(--blue);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 12px;font-size:20px;font-weight:800;display:flex;align-items:center;gap:10px;flex:0 0 auto;border-bottom:4px solid var(--accent);}
-header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
-.btn{border:none;border-radius:14px;font-size:19px;font-weight:700;padding:16px 20px;cursor:pointer;color:#fff;background:var(--blue);width:100%;}
-.btn:active{transform:scale(.97);}
-.btn.orange{background:var(--accent);color:#10141a;}
+header.bar{background:linear-gradient(180deg,#e10613,#c30410);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;font-size:21px;font-weight:800;display:flex;align-items:center;gap:11px;flex:0 0 auto;border-bottom:3px solid var(--accent);box-shadow:0 2px 10px rgba(16,20,26,.12);letter-spacing:-.02em;}
+header.bar .sub{font-size:13px;font-weight:500;opacity:.85;display:block;}
+.btn{border:none;border-radius:14px;font-size:19px;font-weight:700;padding:16px 20px;cursor:pointer;color:#fff;background:var(--blue);width:100%;box-shadow:var(--shadow-sm);transition:transform .08s ease,filter .12s ease,box-shadow .12s ease;display:inline-flex;align-items:center;justify-content:center;gap:9px;letter-spacing:-.01em;}
+.btn:active{transform:scale(.97);filter:brightness(.96);}
+.btn.orange{background:var(--accent);color:#1a1d23;}
 .btn.green{background:var(--green);}
 .btn.red{background:var(--red);}
-.btn.grey{background:var(--grey);}
-.btn.small{font-size:16px;padding:11px 14px;width:auto;}
-.content{flex:1;overflow-y:auto;padding:16px;width:100%;max-width:480px;margin:0 auto;}
-.card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+.btn.grey{background:#eef0f4;color:var(--text);box-shadow:none;}
+body.dark .btn.grey{background:#222c42;color:var(--text);}
+.btn.small{font-size:16px;padding:11px 16px;width:auto;}
+.btn .lic{width:21px;height:21px;flex:0 0 auto;}
+.content{flex:1;overflow-y:auto;padding:18px;width:100%;max-width:480px;margin:0 auto;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:13px;box-shadow:var(--shadow-sm);}
 /* upload */
-#drop{border:3px dashed var(--blue);border-radius:20px;padding:52px 20px;text-align:center;font-size:19px;font-weight:700;color:var(--blue);background:#fffdf2;}
+#drop{border:2.5px dashed rgba(212,5,17,.45);border-radius:var(--radius-lg);padding:54px 22px;text-align:center;font-size:19px;font-weight:700;color:var(--blue);background:linear-gradient(180deg,#fffdf3,#fff8e4);transition:border-color .15s,background .15s;}
+#drop:active{border-color:var(--blue);background:#fff6df;}
 #drop b{font-size:42px;display:block;margin-bottom:8px;}
+#drop small{font-weight:500;}
 /* ritlijst */
-#rideSearch{width:100%;font-size:19px;padding:14px;border-radius:14px;border:2px solid #c8d0da;margin-bottom:12px;}
-.ride-item{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:16px;padding:16px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer;border-left:8px solid var(--blue);}
-.ride-item .rno{font-size:26px;font-weight:800;color:var(--blue);}
+#rideSearch{width:100%;font-size:18px;padding:14px 16px;border-radius:14px;border:1.5px solid var(--border);background:var(--card);color:var(--text);margin-bottom:14px;box-shadow:var(--shadow-sm);}
+#rideSearch:focus{outline:none;border-color:var(--blue);}
+.ride-item{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:11px;box-shadow:var(--shadow-sm);cursor:pointer;border-left:6px solid var(--blue);transition:transform .08s ease,box-shadow .12s ease;}
+.ride-item:active{transform:scale(.985);box-shadow:var(--shadow-md);}
+.ride-item .rno{font-size:25px;font-weight:800;color:var(--blue);letter-spacing:-.02em;}
 .ride-item .rname{font-size:17px;font-weight:600;}
-.ride-item .rmeta{font-size:14px;color:#5b6470;}
-.ride-item .arrow{font-size:26px;color:var(--grey);}
+.ride-item .rmeta{font-size:14px;color:var(--text-soft);margin-top:2px;}
+.ride-item .arrow{color:var(--grey);display:flex;align-items:center;}
+.ride-item .arrow .lic{width:24px;height:24px;}
 /* loading */
-#loadbarWrap{background:#dde3ea;border-radius:10px;height:22px;overflow:hidden;margin-top:14px;}
-#loadbar{background:var(--accent);height:100%;width:0%;transition:width .2s;}
-#loadmsg{font-size:17px;margin-top:10px;color:#444;}
+#loadbarWrap{background:var(--border);border-radius:99px;height:14px;overflow:hidden;margin-top:16px;}
+#loadbar{background:linear-gradient(90deg,var(--accent),var(--accent-dark));height:100%;width:0%;transition:width .25s ease;border-radius:99px;}
+#loadmsg{font-size:16px;margin-top:12px;color:var(--text-soft);font-weight:500;}
 /* nav screen */
 #scr-nav{position:relative;}
 #map{flex:1;min-height:120px;z-index:1;}
-#navTop{position:absolute;top:0;left:0;right:0;z-index:500;background:rgba(212,5,17,.97);color:#fff;padding:calc(env(safe-area-inset-top) + 5px) 12px 7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;cursor:pointer;}
+#navTop{position:absolute;top:0;left:0;right:0;z-index:500;background:linear-gradient(180deg,rgba(212,5,17,.98),rgba(190,4,15,.97));color:#fff;padding:calc(env(safe-area-inset-top) + 6px) 14px 9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.22);border-bottom:2px solid var(--accent);}
 #navTop .meta{font-size:13px;opacity:.85;}
 #navTop:not(.expanded) .meta{display:none !important;}
 #navTop:not(.expanded) #nextRow{display:none !important;}
@@ -72,10 +86,12 @@ header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
 #navTop .meta{font-size:15px;opacity:.85;}
 #navTop .dist{font-size:26px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;}
 #navTop .dist small{display:block;font-size:13px;color:#fff;opacity:.8;font-weight:400;}
-#navBottom{flex:0 0 auto;background:#fff;padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);display:flex;gap:10px;z-index:500;box-shadow:0 -2px 8px rgba(0,0,0,.15);}
-#navBottom .btn{font-size:15px;font-weight:800;padding:10px 4px 12px;line-height:1.15;border-radius:16px;}
-#navBottom .btn .ic{display:block;font-size:24px;margin-bottom:3px;}
-.fab{position:absolute;z-index:500;background:#fff;border:none;border-radius:50%;width:54px;height:54px;font-size:24px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;}
+#navBottom{flex:0 0 auto;background:var(--card);padding:11px 12px calc(env(safe-area-inset-bottom) + 11px);display:flex;gap:9px;z-index:500;box-shadow:0 -3px 14px rgba(0,0,0,.10);border-top:1px solid var(--border);}
+#navBottom .btn{flex-direction:column;gap:3px;font-size:14px;font-weight:800;padding:10px 4px;line-height:1.15;border-radius:15px;box-shadow:none;}
+#navBottom .btn .ic{display:block;font-size:24px;}
+.fab{position:absolute;z-index:500;background:var(--card);color:var(--text);border:none;border-radius:50%;width:54px;height:54px;font-size:24px;box-shadow:var(--shadow-md);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s ease;}
+.fab:active{transform:scale(.92);}
+.fab .lic{width:25px;height:25px;}
 #fabCenter{right:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
 #fabCenter .fci{font-size:22px;line-height:1;}
 #fabCenter .fcl{font-size:8px;font-weight:900;letter-spacing:.4px;color:#d40511;}
@@ -86,9 +102,14 @@ header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
 /* panels */
 .panel{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:none;}
 .panel.open{display:flex;flex-direction:column;justify-content:flex-end;}
-.panel .sheet{background:#fff;border-radius:22px 22px 0 0;max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);}
-.sheet h2{margin:0;padding:16px;font-size:20px;border-bottom:1px solid #e6eaf0;display:flex;justify-content:space-between;align-items:center;}
-.sheet h2 .x{font-size:26px;background:none;border:none;cursor:pointer;padding:0 6px;}
+.panel.open{animation:fadeIn .18s ease;}
+@keyframes fadeIn{from{background:rgba(0,0,0,0);}to{background:rgba(0,0,0,.45);}}
+.panel .sheet{position:relative;background:var(--card);border-radius:var(--radius-lg) var(--radius-lg) 0 0;max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -8px 30px rgba(0,0,0,.25);animation:slideUp .24s cubic-bezier(.22,.61,.36,1);}
+@keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+.panel .sheet::before{content:'';width:42px;height:5px;border-radius:99px;background:var(--border);position:absolute;top:9px;left:50%;transform:translateX(-50%);}
+.sheet h2{margin:0;padding:22px 18px 14px;font-size:20px;font-weight:800;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;letter-spacing:-.02em;}
+.sheet h2 .x{background:var(--bg);border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-soft);padding:0;}
+.sheet h2 .x .lic{width:20px;height:20px;}
 .sheet .body{overflow-y:auto;padding:12px 16px;}
 .stop-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid #eef1f5;cursor:pointer;}
 .stop-row .num{flex:0 0 38px;height:38px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;}
@@ -102,7 +123,8 @@ header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
 .stop-row .a2{font-size:13px;color:#5b6470;}
 .stop-row .eta{font-size:15px;font-weight:700;color:var(--blue);white-space:nowrap;}
 .menu-btns{display:flex;flex-direction:column;gap:10px;padding:6px 16px 16px;}
-.setrow{display:flex;justify-content:space-between;align-items:center;padding:14px 4px;border-bottom:1px solid #eef1f5;font-size:17px;}
+.setrow{display:flex;justify-content:space-between;align-items:center;padding:15px 4px;border-bottom:1px solid var(--border);font-size:17px;}
+.setrow:last-child{border-bottom:none;}
 .setrow input[type=range]{width:46%;}
 .setrow .switch{width:58px;height:34px;border-radius:17px;background:#c8d0da;position:relative;cursor:pointer;border:none;}
 .setrow .switch.on{background:var(--green);}
@@ -110,7 +132,8 @@ header.bar .sub{font-size:13px;font-weight:400;opacity:.8;display:block;}
 .setrow .switch.on::after{left:27px;}
 .badge{display:inline-block;background:var(--green);color:#fff;border-radius:8px;font-size:13px;padding:3px 8px;font-weight:700;}
 .badge.orange{background:var(--accent);color:#10141a;}
-input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px solid #c8d0da;margin-bottom:10px;}
+input.txt,select.txt{width:100%;font-size:18px;padding:14px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--card);color:var(--text);margin-bottom:10px;}
+input.txt:focus,select.txt:focus{outline:none;border-color:var(--blue);}
 /* markers */
 .mk{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:800;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);font-size:13px;}
 .mk.pending{background:var(--dark);}
@@ -152,7 +175,22 @@ input.txt{width:100%;font-size:19px;padding:13px;border-radius:12px;border:2px s
 #speedNow .u{font-size:11px;color:#5b6470;font-weight:700;}
 #speedNow.over .v{color:var(--red);}
 #accWarn{position:absolute;left:0;right:0;z-index:515;background:var(--accent);color:#10141a;font-size:15px;font-weight:700;padding:9px 14px;display:none;}
-.ic svg{width:26px;height:26px;fill:currentColor;display:block;margin:0 auto;}
+/* Lucide icoonsysteem — één consistente lijnstijl door de hele app */
+.lic{width:24px;height:24px;display:inline-block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.18em;flex:0 0 auto;}
+.lic.sm{width:15px;height:15px;vertical-align:-.22em;}
+.lic.big{width:64px;height:64px;}
+.mk .lic{width:64%;height:64%;}
+#navStreet .lic{width:26px;height:26px;vertical-align:-.18em;}
+.lic.spin{animation:licspin 1s linear infinite;}
+@keyframes licspin{to{transform:rotate(360deg);}}
+.nIcon .lic{width:46px;height:46px;stroke:#ff6d00;}
+.fci .lic{width:23px;height:23px;}
+#adminBtn .lic{width:14px;height:14px;}
+#testBar .lic{width:15px;height:15px;}
+#drop .lic{width:64px;height:64px;stroke:var(--blue);stroke-width:1.6;margin:0 auto 12px;display:block;}
+#apNum .lic,.apStreet .lic{vertical-align:-.15em;}
+.ic{display:flex;align-items:center;justify-content:center;}
+.ic .lic{width:25px;height:25px;}
 header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 #dropArt svg{width:84px;height:84px;display:block;margin:0 auto 10px;}
 @media (min-width:700px){
@@ -192,9 +230,9 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <body>
 
 <!-- SCHERM 1: UPLOAD -->
-<div id="testBar">🧪 TEST MODUS — aanpassingen worden NIET opgeslagen</div>
+<div id="testBar"><svg class="lic" viewBox="0 0 24 24"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg> TEST MODUS — aanpassingen worden NIET opgeslagen</div>
 <div id="scr-upload" class="screen active" style="position:relative">
-  <header class="bar"><img class="logo" src="icon.png" onerror="this.style.display='none'">RouteFast Planner<span class="sub"></span><button id="adminBtn" onclick="openAdminLogin()">⚙ Admin</button></header>
+  <header class="bar"><img class="logo" src="icon.png" onerror="this.style.display='none'">RouteFast Planner<span class="sub"></span><button id="adminBtn" onclick="openAdminLogin()"><svg class="lic" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Admin</button></header>
   <div class="content">
     <div id="drop" onclick="document.getElementById('file').click()">
       <span id="dropArt"><svg viewBox="0 0 512 512"><ellipse cx="172" cy="448" rx="52" ry="13" fill="#E0AC00"/><ellipse cx="392" cy="294" rx="34" ry="9" fill="#E0AC00"/><path d="M 200 430 C 300 430 250 330 330 320 C 410 310 350 300 388 286" stroke="#D40511" stroke-width="22" fill="none" stroke-linecap="round"/><path d="M 172 250 c -50 0 -84 38 -84 82 c 0 56 64 84 84 112 c 20 -28 84 -56 84 -112 c 0 -44 -34 -82 -84 -82 z" fill="#D40511"/><circle cx="172" cy="330" r="32" fill="#FFCC00"/><path d="M 392 188 c -28 0 -47 21 -47 46 c 0 31 36 47 47 63 c 11 -16 47 -32 47 -63 c 0 -25 -19 -46 -47 -46 z" fill="#D40511"/><circle cx="392" cy="232" r="17" fill="#FFCC00"/></svg></span>Tik hier om je PDF-planning te kiezen<br><small style="font-size:14px;color:#5b6470">DHL laadlijst met één of meer ritten</small>
@@ -203,7 +241,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
     <div id="resumeCard" class="card" style="display:none">
       <div style="font-size:17px;font-weight:700;margin-bottom:10px">Vorige rit verdergaan?</div>
       <div id="resumeInfo" style="font-size:15px;color:#5b6470;margin-bottom:12px"></div>
-      <button class="btn green" onclick="resumeRide()">▶ Verdergaan</button>
+      <button class="btn green" onclick="resumeRide()"><svg class="lic" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>Verdergaan</button>
     </div>
   </div>
 </div>
@@ -212,7 +250,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <div id="scr-rides" class="screen">
   <header class="bar">Kies je rit<span class="sub" id="ridesSub"></span></header>
   <div class="content">
-    <input id="rideSearch" type="search" placeholder="🔍 Zoek op ritnummer of chauffeur..." oninput="renderRides()">
+    <input id="rideSearch" type="search" placeholder="Zoek op ritnummer of chauffeur..." oninput="renderRides()">
     <div id="rideList"></div>
     <button class="btn grey" style="margin-top:6px" onclick="show('scr-upload')">← Andere PDF</button>
   </div>
@@ -252,10 +290,10 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
     <div class="apNum" id="apNum"></div>
     <div class="apStreet" id="apStreet"></div>
     <div class="apPkg" id="apPkg"></div>
-    <button class="apX" id="apXBtn" onclick="hideArrivePop()">Sluiten ✕<div id="arriveProgBar" style="width:100%"></div></button>
+    <button class="apX" id="apXBtn" onclick="hideArrivePop()">Sluiten<div id="arriveProgBar" style="width:100%"></div></button>
   </div>
   <div id="notesPop">
-    <div class="nIcon" id="notesIcon">⚠️</div>
+    <div class="nIcon" id="notesIcon"><svg class="lic" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
     <div class="nTitle" id="notesTitle"></div>
     <div class="nText" id="notesText"></div>
     <div id="notesPkg" style="font-size:14px;font-weight:700;color:#10141a;margin:6px 0 10px"></div>
@@ -265,22 +303,22 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   <div id="map"></div>
   <button class="fab" id="fabZoomIn" onclick="map.zoomIn()">＋</button>
   <button class="fab" id="fabZoomOut" onclick="map.zoomOut()">－</button>
-  <button class="fab" id="fabCenter" onclick="cycleFabCenter()"><span class="fci" id="fabCenterIcon">🧭</span><span class="fcl" id="fabCenterLabel">HEADING</span></button>
+  <button class="fab" id="fabCenter" onclick="cycleFabCenter()"><span class="fci" id="fabCenterIcon"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span><span class="fcl" id="fabCenterLabel">HEADING</span></button>
   <div id="navBottom">
-    <button class="btn green" onclick="completeCurrent()"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span>Klaar</button>
-    <button class="btn orange" onclick="skipCurrent()"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></span>Overslaan</button>
-    <button class="btn" onclick="openStops()"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg></span>Stops</button>
-    <button class="btn grey" style="flex:0 0 60px" onclick="openPanel('panel-settings')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></span></button>
+    <button class="btn green" onclick="completeCurrent()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Klaar</button>
+    <button class="btn orange" onclick="skipCurrent()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></svg></span>Overslaan</button>
+    <button class="btn" onclick="openStops()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg></span>Stops</button>
+    <button class="btn grey" style="flex:0 0 60px" onclick="openPanel('panel-settings')"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span></button>
   </div>
 </div>
 
 <!-- PANEL: STOPLIJST -->
 <div class="panel" id="panel-stops">
   <div class="sheet">
-    <h2><span id="stopsTitle">Stops</span><button class="x" onclick="closePanel('panel-stops')">✕</button></h2>
+    <h2><span id="stopsTitle">Stops</span><button class="x" onclick="closePanel('panel-stops')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="body" id="stopList"></div>
     <div class="menu-btns">
-      <button class="btn" onclick="openAddStop()">＋ Nieuwe stop toevoegen</button>
+      <button class="btn" onclick="openAddStop()"><svg class="lic" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Nieuwe stop toevoegen</button>
     </div>
   </div>
 </div>
@@ -288,7 +326,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <!-- PANEL: STOPMENU -->
 <div class="panel" id="panel-stopmenu">
   <div class="sheet">
-    <h2><span id="smTitle">Stop</span><button class="x" onclick="closePanel('panel-stopmenu')">✕</button></h2>
+    <h2><span id="smTitle">Stop</span><button class="x" onclick="closePanel('panel-stopmenu')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="menu-btns" id="smBtns"></div>
   </div>
 </div>
@@ -296,13 +334,13 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <!-- PANEL: STOP TOEVOEGEN -->
 <div class="panel" id="panel-addstop">
   <div class="sheet">
-    <h2>Nieuwe stop<button class="x" onclick="closePanel('panel-addstop')">✕</button></h2>
+    <h2>Nieuwe stop<button class="x" onclick="closePanel('panel-addstop')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="body">
       <input class="txt" id="addPC" placeholder="Postcode (bijv. 8131GG)" autocapitalize="characters">
       <input class="txt" id="addNR" placeholder="Huisnummer (bijv. 8 of 22 B)">
       <input class="txt" id="addNote" placeholder="Notitie / naam (optioneel)">
-      <button class="btn green" onclick="addStop('auto')">🎯 Beste plek in de route (automatisch)</button>
-      <button class="btn" style="margin-top:10px" onclick="addStop('next')">↓ Direct na de huidige stop</button>
+      <button class="btn green" onclick="addStop('auto')"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Beste plek in de route (automatisch)</button>
+      <button class="btn" style="margin-top:10px" onclick="addStop('next')"><svg class="lic" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>Direct na de huidige stop</button>
       <div id="addMsg" style="margin-top:10px;color:var(--red);font-weight:700"></div>
     </div>
   </div>
@@ -311,7 +349,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <!-- PANEL: ADRESNOTITIES -->
 <div class="panel" id="panel-notes">
   <div class="sheet">
-    <h2><span id="notesEditTitle">Meldingen adres</span><button class="x" onclick="closePanel('panel-notes')">✕</button></h2>
+    <h2><span id="notesEditTitle">Meldingen adres</span><button class="x" onclick="closePanel('panel-notes')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="body" id="notesEditBody">
       <div style="font-size:15px;color:#5b6470;margin-bottom:10px">Meldingen worden opgeslagen per adres en getoond bij aankomst.</div>
       <div id="notesList"></div>
@@ -326,7 +364,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
           <option value="📍 Eigen notitie">📍 Eigen notitie</option>
         </select>
         <input class="txt" id="notesCustom" placeholder="Extra omschrijving (optioneel)">
-        <button class="btn green" onclick="addNote()">＋ Melding opslaan</button>
+        <button class="btn green" onclick="addNote()"><svg class="lic" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Melding opslaan</button>
       </div>
     </div>
   </div>
@@ -335,9 +373,9 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 <!-- PANEL: INSTELLINGEN -->
 <div class="panel" id="panel-settings">
   <div class="sheet">
-    <h2 id="settingsTitle">Instellingen<button class="x" id="settingsCloseBtn" onclick="closePanel('panel-settings')">✕</button></h2>
+    <h2 id="settingsTitle">Instellingen<button class="x" id="settingsCloseBtn" onclick="closePanel('panel-settings')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="body">
-      <div id="setupBanner" style="display:none;background:#e8f5e9;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px;color:#2e7d32">✅ Stel je voorkeuren in — je kunt dit later altijd aanpassen via het tandwieltje ⚙️</div>
+      <div id="setupBanner" style="display:none;background:#e8f5e9;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px;color:#2e7d32">Stel je voorkeuren in — je kunt dit later altijd aanpassen via het instellingenscherm.</div>
       <div class="setrow"><span>Chauffeur</span><span id="driverDisplay" style="font-size:14px;color:#5b6470">—</span></div>
       <div class="setrow"><span>Donkere modus</span><button class="switch" id="swDark" onclick="toggleDark()"></button></div>
       <div class="setrow"><span>Aankomstradius: <b id="radVal"></b> m</span><input type="range" min="15" max="75" step="5" id="radius" oninput="setRadius(this.value)"></div>
@@ -348,19 +386,19 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
       <div class="setrow"><span>GPS-positie op scherm: <b id="offsetVal"></b>%</span><input type="range" min="0" max="45" step="5" id="gpsOffset" oninput="setGpsOffset(this.value)"></div>
       <div style="padding:14px 4px;border-bottom:1px solid #eef1f5">
-        <div style="font-size:17px;margin-bottom:8px">🏠 Depot (terugkeer na laatste stop)</div>
+        <div style="font-size:17px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><svg class="lic" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Depot (terugkeer na laatste stop)</div>
         <input class="txt" id="depotAddr" placeholder="bijv. Wattstraat 3, Raalte">
         <button class="btn small" onclick="saveDepot()">Depot opslaan</button>
         <div id="depotMsg" style="font-size:13px;color:#5b6470;margin-top:6px"></div>
       </div>
       <div id="setupSaveRow" style="display:none;padding:0 4px 10px">
-        <button class="btn green" style="width:100%" onclick="saveSetupAndStart()">✓ Opslaan &amp; starten</button>
+        <button class="btn green" style="width:100%" onclick="saveSetupAndStart()"><svg class="lic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Opslaan &amp; starten</button>
       </div>
       <div id="regularSaveRow" style="padding:0 4px 10px">
-        <button class="btn" id="saveProfileBtn" style="width:100%" onclick="saveProfileAndConfirm()">💾 Instellingen opslaan</button>
+        <button class="btn" id="saveProfileBtn" style="width:100%" onclick="saveProfileAndConfirm()"><svg class="lic" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>Instellingen opslaan</button>
       </div>
       <div id="endRideRow" style="padding:0 4px 14px">
-        <button class="btn red" onclick="endRide()">■ Rit beëindigen</button>
+        <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
       <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px">RouteFast v1.0 · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
@@ -369,6 +407,67 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 
 <script>
 'use strict';
+/* ============================================================
+   LUCIDE ICONEN — één consistente lijn-icoonset (lucide.dev, ISC)
+   Inline SVG zodat alles offline werkt in de PWA. Gebruik ic('naam').
+   ============================================================ */
+const ICONS = {
+  compass:'<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+  navigation:'<polygon points="3 11 22 2 13 21 11 13 3 11"/>',
+  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  package:'<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/>',
+  accessibility:'<circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-3.88-6"/>',
+  bellOff:'<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
+  dog:'<path d="M11.25 16.25h1.5L12 17z"/><path d="M16 14v.5"/><path d="M8 14v.5"/><path d="M4.42 11.247A13.152 13.152 0 0 0 4 14.556C4 18.728 7.582 21 12 21s8-2.272 8-6.444a11.702 11.702 0 0 0-.493-3.309"/><path d="M8.5 8.5c-.384 1.05-1.083 2.028-2.344 2.5-1.931.722-3.576-.297-3.656-1-.113-.994 1.177-6.53 4-7 1.923-.321 3.651.845 3.651 2.235A7.497 7.497 0 0 1 14 5.277c0-1.39 1.844-2.598 3.767-2.277 2.823.47 4.113 6.006 4 7-.08.703-1.725 1.722-3.656 1-1.261-.472-1.855-1.45-2.239-2.5"/>',
+  door:'<path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z"/>',
+  pin:'<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  checkCircle:'<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  home:'<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+  save:'<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+  stop:'<circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/>',
+  loader:'<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+  walk:'<path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/>',
+  pickup:'<path d="m16 16 2 2 4-4"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/>',
+  party:'<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L12 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/>',
+  flag:'<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+  map:'<path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/>',
+  skip:'<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/>',
+  megaphone:'<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+  user:'<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  lock:'<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  trash:'<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  flask:'<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>',
+  settings:'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  play:'<polygon points="6 3 20 12 6 21 6 3"/>',
+  chevronRight:'<path d="m9 18 6-6-6-6"/>',
+  list:'<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+  plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
+  moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+  arrowUp:'<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  arrowUpShort:'<path d="m18 11-6-6-6 6"/><path d="M12 5v14"/>',
+  arrowDownShort:'<path d="M12 5v14"/><path d="m6 13 6 6 6-6"/>',
+  move:'<polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/>',
+  rotate:'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'
+};
+function ic(name, cls){ return '<svg class="lic'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(ICONS[name]||'')+'</svg>'; }
+/* meldingscategorie -> icoon (op tekstinhoud, stored values blijven gelijk) */
+function noteIconName(t){ t=(t||'').toLowerCase();
+  if(t.includes('hond')) return 'dog';
+  if(t.includes('afgesproken')||t.includes('plek')) return 'package';
+  if(t.includes('invalide')) return 'accessibility';
+  if(t.includes('aanbellen')||t.includes('bel')) return t.includes('lang')?'door':'bellOff';
+  if(t.includes('notitie')) return 'pin';
+  return 'alert';
+}
 /* ============================================================
    RouteFast Planner - logica
    Opzet: pure logica (parser, geocoder, router, optimizer)
@@ -689,10 +788,11 @@ function persist() {
 function loadPersisted() { try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
 
 /* ---------- UPLOAD ---------- */
+const DROP_DEFAULT = $('drop').innerHTML;
 $('file').addEventListener('change', async e => {
   const f = e.target.files[0];
   if (!f) return;
-  $('drop').innerHTML = '<b>⏳</b>PDF wordt gelezen...';
+  $('drop').innerHTML = ic('loader','spin') + 'PDF wordt gelezen...';
   try {
     const buf = await f.arrayBuffer();
     const doc = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -709,7 +809,7 @@ $('file').addEventListener('change', async e => {
   } catch (err) {
     alert('PDF lezen mislukt: ' + err.message);
   }
-  $('drop').innerHTML = '<b>📄</b>Tik hier om je PDF-planning te kiezen<br><small style="font-size:14px;color:#5b6470">DHL laadlijst met één of meer ritten</small>';
+  $('drop').innerHTML = DROP_DEFAULT;
   e.target.value = '';
 });
 
@@ -730,7 +830,7 @@ function renderRides() {
     const numPkgs = r.stops.length;
     div.innerHTML = `<div><div class="rno">Rit ${r.rit}</div>
       <div class="rname">${r.bezorger}${r.bezorgerId ? ' (' + r.bezorgerId + ')' : ''}</div>
-      <div class="rmeta">${numStops} stops · ${numPkgs} pakket${numPkgs !== 1 ? 'ten' : ''}</div></div><div class="arrow">›</div>`;
+      <div class="rmeta">${numStops} stops · ${numPkgs} pakket${numPkgs !== 1 ? 'ten' : ''}</div></div><div class="arrow">${ic('chevronRight')}</div>`;
     list.appendChild(div);
   });
   if (!list.children.length) list.innerHTML = '<div class="card">Geen rit gevonden.</div>';
@@ -767,7 +867,7 @@ async function chooseRide(i) {
   });
   if (failed.length) {
     $('geoWarn').style.display = 'block';
-    $('geoWarn').innerHTML = `<b>⚠️ ${failed.length} adres(sen) niet gevonden</b><br>` +
+    $('geoWarn').innerHTML = `<b>${ic('alert','sm')} ${failed.length} adres(sen) niet gevonden</b><br>` +
       failed.map(s => `${s.street} ${s.huisnr}, ${s.postcode}`).join('<br>') +
       '<br><small>Deze stops staan wel in de lijst, maar zonder kaartpositie.</small>';
   }
@@ -936,11 +1036,11 @@ function drawStops() {
     const el = document.createElement('div');
     if (s.isDepot) {
       const size = isCur ? 44 : 36;
-      el.innerHTML = `<div class="mk ${isCur ? 'current' : s.status}" style="width:${size}px;height:${size}px;background:#10141a;font-size:17px">${s.status === 'done' ? '✓' : '🏠'}</div>`;
+      el.innerHTML = `<div class="mk ${isCur ? 'current' : s.status}" style="width:${size}px;height:${size}px;background:#10141a;font-size:17px">${s.status === 'done' ? ic('check') : ic('home')}</div>`;
     } else {
       const cls = (isCur ? 'current' : s.status) + (ooo.has(s) ? ' ooo' : '') + (s.steeg ? ' steeg' : (s.seqs ? ' multi' : ''));
       const size = isCur ? 44 : 30;
-      el.innerHTML = `<div class="mk ${cls}" style="width:${size}px;height:${size}px">${s.status === 'done' ? '✓' : markerLabel(s)}</div>`;
+      el.innerHTML = `<div class="mk ${cls}" style="width:${size}px;height:${size}px">${s.status === 'done' ? ic('check') : markerLabel(s)}</div>`;
     }
     el.style.cursor = 'pointer';
     el.addEventListener('click', () => openStopMenu(state.stops.indexOf(s)));
@@ -986,7 +1086,7 @@ function startGPS() {
 function gpsError(e) {
   gpsLost = true;
   if (e.code === 1) { // toestemming geweigerd
-    $('navMeta').textContent = '⚠️ Geef Safari toegang tot locatie (Instellingen → Privacy → Locatievoorzieningen)';
+    $('navMeta').textContent = 'Geef Safari toegang tot locatie (Instellingen → Privacy → Locatievoorzieningen)';
     return;
   }
   // timeout of positie kwijt: stil opnieuw proberen
@@ -1042,7 +1142,7 @@ function onPos(p) {
   if (p.coords.accuracy > 150) {
     if (++accBad >= 3 && !accWarned) {
       accWarned = true;
-      $('accWarn').textContent = '📍 Zet Exacte locatie aan: tik in Safari op "aA" → Websiteinstellingen → Locatie, of via Instellingen → Privacy → Locatievoorzieningen → Safari-websites → Exacte locatie. (Tik om te sluiten)';
+      $('accWarn').textContent = 'Zet Exacte locatie aan: tik in Safari op "aA" → Websiteinstellingen → Locatie, of via Instellingen → Privacy → Locatievoorzieningen → Safari-websites → Exacte locatie. (Tik om te sluiten)';
       $('accWarn').style.display = 'block';
       $('accWarn').style.top = $('navTop').offsetHeight + 'px';
     }
@@ -1327,11 +1427,11 @@ async function saveDepot() {
   if (!q) { state.settings.depot = { label: '', lat: null, lon: null }; persist(); $('depotMsg').textContent = 'Depot uitgeschakeld.'; drawStops(); return; }
   $('depotMsg').textContent = 'Adres opzoeken...';
   const res = await geocodeFree(q);
-  if (!res) { $('depotMsg').textContent = '⚠️ Adres niet gevonden. Probeer bijv. "Wattstraat 3, Raalte".'; return; }
+  if (!res) { $('depotMsg').innerHTML = ic('alert','sm') + ' Adres niet gevonden. Probeer bijv. "Wattstraat 3, Raalte".'; return; }
   state.settings.depot = { label: q, lat: res.lat, lon: res.lon };
   depotArrived = false;
   persist();
-  $('depotMsg').textContent = '✓ Gevonden: ' + res.naam;
+  $('depotMsg').innerHTML = ic('check','sm') + ' Gevonden: ' + res.naam;
   drawStops(); updateNavLine(); updateNavCard();
 }
 
@@ -1369,19 +1469,19 @@ function _doShowArrivePop(s) {
   $('apNum').textContent = hnr;
   $('apStreet').textContent = s.street + ' · ' + s.city;
   if (s.steeg) {
-    $('apPkg').innerHTML = `🚶 STEEG · PAK PAKKETTEN<br><b>NR ${seqLabel(s)}</b><br><small style="font-weight:400">Hier ook: ${s.steegOther}</small>`;
+    $('apPkg').innerHTML = `${ic('walk')} STEEG · PAK PAKKETTEN<br><b>NR ${seqLabel(s)}</b><br><small style="font-weight:400">Hier ook: ${s.steegOther}</small>`;
     $('arrivePop').classList.remove('warn');
   } else if (warn) {
     const mps = minPendingSeq();
-    $('apPkg').innerHTML = `⚠️ PAK ${s.seqs ? 'PAKKETTEN' : 'PAKKET'}<br><b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? '<br><small>900-SERIE</small>' : ''}<br><small style="font-weight:400">${s.sender || ''}${mps !== Infinity ? '<br>Niet nr ' + mps + '!' : ''}</small>`;
+    $('apPkg').innerHTML = `${ic('alert')} PAK ${s.seqs ? 'PAKKETTEN' : 'PAKKET'}<br><b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? '<br><small>900-SERIE</small>' : ''}<br><small style="font-weight:400">${s.sender || ''}${mps !== Infinity ? '<br>Niet nr ' + mps + '!' : ''}</small>`;
     $('arrivePop').classList.add('warn');
   } else if (s.afhaal) {
-    $('apPkg').innerHTML = `📤 AFHAALOPDRACHT<br><small style="font-weight:400">Pakket meenemen van klant</small>`;
+    $('apPkg').innerHTML = `${ic('pickup')} AFHAALOPDRACHT<br><small style="font-weight:400">Pakket meenemen van klant</small>`;
     $('arrivePop').classList.remove('warn');
   } else {
     const pLabel = s.seqs
-      ? `📦 Pakketten nr ${s.seqs.join(' & ')}`
-      : (typeof s.seq === 'number' ? `📦 Pakket nr ${s.seq}` : '');
+      ? `${ic('package')} Pakketten nr ${s.seqs.join(' & ')}`
+      : (typeof s.seq === 'number' ? `${ic('package')} Pakket nr ${s.seq}` : '');
     const sLabel = s.sender ? `<small style="font-weight:400;color:#5b6470">${s.sender}</small>` : '';
     $('apPkg').innerHTML = pLabel + (pLabel && sLabel ? '<br>' : '') + sLabel;
     $('arrivePop').classList.remove('warn');
@@ -1401,12 +1501,12 @@ function showNotesPop(s, noteText) {
     title = noteText.substring(0, idx); detail = noteText.substring(idx + 1);
   } else { title = noteText; detail = ''; }
   const emojiMatch = title.match(/^(\S+)\s*(.*)/);
-  $('notesIcon').textContent = emojiMatch ? emojiMatch[1] : '⚠️';
+  $('notesIcon').innerHTML = ic(noteIconName(title));
   $('notesTitle').textContent = emojiMatch ? emojiMatch[2].trim() : title;
   $('notesText').textContent = detail || 'Let op bij dit adres!';
   // Pakketnummer tonen
   const pkgTxt = (s && !s.isDepot && nseq(s) !== Infinity) ? pkgLabel(s) : '';
-  $('notesPkg').textContent = pkgTxt ? '📦 ' + pkgTxt : '';
+  $('notesPkg').innerHTML = pkgTxt ? ic('package') + ' ' + pkgTxt : '';
   $('notesPop').style.display = 'block';
   startNotesTimer();
   beep();
@@ -1454,17 +1554,17 @@ function updatePkgWarn() {
   if (cur) {
     const mps = minPendingSeq();
     if (cur.steeg) {
-      html = `🚶 STEEG · PAK PAKKETTEN NR ${seqLabel(cur)} · hier ook: ${cur.steegOther}`;
+      html = `${ic('walk')} STEEG · PAK PAKKETTEN NR ${seqLabel(cur)} · hier ook: ${cur.steegOther}`;
       bg = 'var(--green)'; fg = '#fff';
     } else if (nseq(cur) !== Infinity && nseq(cur) !== mps) {
-      html = `📦 PAK ${cur.seqs ? 'PAKKETTEN' : 'PAKKET'} NR ${seqLabel(cur)}` +
+      html = `${ic('package')} PAK ${cur.seqs ? 'PAKKETTEN' : 'PAKKET'} NR ${seqLabel(cur)}` +
         (nseq(cur) >= 900 ? ' (900-SERIE)' : '') + (cur.sender ? ` (${cur.sender})` : '') +
         (mps !== Infinity ? ` — niet nr ${mps}` : '');
     } else if (cur.seqs) {
-      html = `📦 ${cur.seqs.length} PAKKETTEN OP DIT ADRES · NR ${seqLabel(cur)}`;
+      html = `${ic('package')} ${cur.seqs.length} PAKKETTEN OP DIT ADRES · NR ${seqLabel(cur)}`;
       bg = 'var(--accent)'; fg = '#10141a';
     } else if (cur.afhaal) {
-      html = '📤 AFHAALOPDRACHT · pakket meenemen van de klant';
+      html = `${ic('pickup')} AFHAALOPDRACHT · pakket meenemen van de klant`;
       bg = 'var(--accent)'; fg = '#10141a';
     }
   }
@@ -1537,9 +1637,9 @@ function updateFabCenter() {
   const icon = $('fabCenterIcon');
   const lbl = $('fabCenterLabel');
   btn.classList.remove('mode-heading','mode-north','mode-free');
-  if (trackMode === 'heading') { icon.textContent = '🧭'; lbl.textContent = 'HEADING'; btn.classList.add('mode-heading'); }
-  else if (trackMode === 'north') { icon.textContent = '⬆️'; lbl.textContent = 'NOORD'; btn.classList.add('mode-north'); }
-  else { icon.textContent = '⊕'; lbl.textContent = 'VRIJ'; btn.classList.add('mode-free'); }
+  if (trackMode === 'heading') { icon.innerHTML = ic('compass'); lbl.textContent = 'HEADING'; btn.classList.add('mode-heading'); }
+  else if (trackMode === 'north') { icon.innerHTML = ic('arrowUp'); lbl.textContent = 'NOORD'; btn.classList.add('mode-north'); }
+  else { icon.innerHTML = ic('move'); lbl.textContent = 'VRIJ'; btn.classList.add('mode-free'); }
 }
 
 function beep() {
@@ -1577,7 +1677,7 @@ function updateNavCard() {
   const total = state.stops.length;
   const done = state.stops.filter(s => s.status !== 'pending').length;
   if (!cur) {
-    $('navStreet').textContent = '🎉 Rit voltooid!';
+    $('navStreet').innerHTML = ic('party') + ' Rit voltooid!';
     $('navMeta').textContent = `${total} stops afgerond`;
     $('navDist').firstChild.textContent = '—';
     $('navEta').textContent = '';
@@ -1589,7 +1689,7 @@ function updateNavCard() {
     return;
   }
   if (cur.isDepot) {
-    $('navStreet').textContent = '🏠 Terug naar depot';
+    $('navStreet').innerHTML = ic('home') + ' Terug naar depot';
     $('navMeta').textContent = cur.street;
     const liDep = state.legInfo.find(l => l.stop === cur);
     $('navEta').textContent = liDep ? fmtEta(liDep.cumDur) : '';
@@ -1602,12 +1702,12 @@ function updateNavCard() {
   $('navStreet').textContent = `${cur.street} ${cur.huisnr}${cur.toevoeging ? ' ' + cur.toevoeging.replace(/^-/, '') : ''}`;
   const last = state.legInfo[state.legInfo.length - 1];
   const metaFull = `Stop ${done + 1}/${total} · ${cur.postcode} ${cur.city} · slot ${cur.window}` +
-    (cur.steeg ? ' · 🚶 STEEG +' + cur.steegOther : '') +
-    (cur.afhaal ? ' · 📦 AFHAAL' : '') +
+    (cur.steeg ? ' · STEEG +' + cur.steegOther : '') +
+    (cur.afhaal ? ' · AFHAAL' : '') +
     (state.routeDist ? ` · ${(state.routeDist / 1000).toFixed(1)} km route` : '') +
     (last ? ` · klaar ±${new Date(Date.now() + last.cumDur * 1000).toTimeString().slice(0, 5)}` : '') +
     (state.optSaving ? ` · opt. -${state.optSaving} min` : '');
-  const metaCompact = `Stop ${done + 1}/${total}` + (cur.steeg ? ' · 🚶' : '') + (cur.afhaal ? ' · 📦 AFHAAL' : '');
+  const metaCompact = `Stop ${done + 1}/${total}` + (cur.steeg ? ' · STEEG' : '') + (cur.afhaal ? ' · AFHAAL' : '');
   $('navMeta').dataset.full = metaFull;
   $('navMeta').textContent = navExpanded ? metaFull : metaCompact;
   const li = state.legInfo.find(l => l.stop === cur);
@@ -1647,7 +1747,7 @@ function showRideComplete() {
   const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:14px;padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1">${val}</div><div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px">${lbl}</div></div>`;
   el.innerHTML =
     '<div style="padding:calc(env(safe-area-inset-top)+24px) 20px 30px;max-width:480px;margin:0 auto;text-align:center">' +
-    '<div style="font-size:72px;line-height:1;margin-bottom:8px">🎉</div>' +
+    '<div style="margin-bottom:10px;color:#fff">' + ic('party','big') + '</div>' +
     '<h2 style="margin:0 0 4px;font-size:30px;color:#fff;font-weight:900">Rit voltooid!</h2>' +
     '<p style="color:rgba(255,255,255,.75);margin:0 0 24px;font-size:16px">Goed werk vandaag!</p>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">' +
@@ -1656,8 +1756,8 @@ function showRideComplete() {
     stat(durStr, 'rijtijd') +
     stat(sph, 'stops per uur') +
     '</div>' +
-    (skipped > 0 ? `<div style="background:rgba(255,200,0,.25);border-radius:12px;padding:10px 14px;margin-bottom:16px;color:#fff;font-size:14px">⚠️ ${skipped} stop(s) overgeslagen</div>` : '') +
-    '<button onclick="$(\'rideCompleteScreen\').style.display=\'none\'" style="width:100%;background:#fff;color:#d40511;border:none;border-radius:16px;font-size:18px;font-weight:800;padding:16px;cursor:pointer">Sluiten ✕</button>' +
+    (skipped > 0 ? `<div style="background:rgba(255,200,0,.25);border-radius:12px;padding:10px 14px;margin-bottom:16px;color:#fff;font-size:14px">${ic('alert','sm')} ${skipped} stop(s) overgeslagen</div>` : '') +
+    '<button onclick="$(\'rideCompleteScreen\').style.display=\'none\'" style="width:100%;background:#fff;color:#d40511;border:none;border-radius:16px;font-size:18px;font-weight:800;padding:16px;cursor:pointer">Sluiten</button>' +
     '</div>';
   el.style.display = 'block';
 }
@@ -1695,9 +1795,9 @@ function renderStopList() {
     row.className = 'stop-row ' + s.status + (s === cur ? ' current' : '') + (s.seqs && !s.steeg ? ' multi' : '');
     const li = state.legInfo.find(l => l.stop === s);
     const hasNote = hasAnyNote(s);
-    row.innerHTML = `<div class="num">${s.status === 'done' ? '✓' : s.status === 'skipped' ? '⏭' : s.seq}</div>
+    row.innerHTML = `<div class="num">${s.status === 'done' ? ic('check') : s.status === 'skipped' ? ic('skip') : s.seq}</div>
       <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}${hasNote ? '<span class="note-dot" title="Melding aanwezig"></span>' : ''}</div>
-      <div class="a2">${s.steeg ? '🚶 steeg (ook ' + s.steegOther + ') · ' : ''}${s.seqs ? '📦 ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · 📦 AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ⚠️ geen positie'}</div></div>
+      <div class="a2">${s.steeg ? ic('walk','sm') + ' steeg (ook ' + s.steegOther + ') · ' : ''}${s.seqs ? ic('package','sm') + ' ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · ' + ic('package','sm') + ' AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ' + ic('alert','sm') + ' geen positie'}</div></div>
       <div class="eta">${s.status === 'pending' && li ? fmtEta(li.cumDur).replace('aank. ', '') : ''}</div>`;
     row.onclick = () => openStopMenu(i);
     list.appendChild(row);
@@ -1717,26 +1817,26 @@ function openStopMenu(i) {
   const b = $('smBtns'); b.innerHTML = '';
   const mk = (label, cls, fn) => {
     const btn = document.createElement('button');
-    btn.className = 'btn ' + cls; btn.textContent = label;
+    btn.className = 'btn ' + cls; btn.innerHTML = label;
     btn.onclick = () => { closePanel('panel-stopmenu'); fn(); };
     b.appendChild(btn);
   };
   if (s.status === 'pending') {
-    mk('✓ Markeer als voltooid', 'green', () => { s.status = 'done'; afterStopChange(true); });
-    mk('⏭ Overslaan', 'orange', () => { s.status = 'skipped'; afterStopChange(true); });
-    mk('🎯 Maak dit de volgende stop', '', () => { moveToFront(i); });
-    mk('⬆️ Eén plek eerder', 'grey', () => { moveStop(i, -1); });
-    mk('⬇️ Eén plek later', 'grey', () => { moveStop(i, +1); });
-    if (!s.steeg) mk('🚶 Koppel met steeg-stop...', 'grey', () => linkSteeg(i));
-    else mk('🚶 Steeg-koppeling opheffen', 'grey', () => unlinkSteeg(i));
+    mk(ic('check') + ' Markeer als voltooid', 'green', () => { s.status = 'done'; afterStopChange(true); });
+    mk(ic('skip') + ' Overslaan', 'orange', () => { s.status = 'skipped'; afterStopChange(true); });
+    mk(ic('target') + ' Maak dit de volgende stop', '', () => { moveToFront(i); });
+    mk(ic('arrowUpShort') + ' Eén plek eerder', 'grey', () => { moveStop(i, -1); });
+    mk(ic('arrowDownShort') + ' Eén plek later', 'grey', () => { moveStop(i, +1); });
+    if (!s.steeg) mk(ic('walk') + ' Koppel met steeg-stop...', 'grey', () => linkSteeg(i));
+    else mk(ic('walk') + ' Steeg-koppeling opheffen', 'grey', () => unlinkSteeg(i));
   } else {
-    mk('↩️ Opnieuw inplannen', '', () => { s.status = 'pending'; afterStopChange(true); });
+    mk(ic('rotate') + ' Opnieuw inplannen', '', () => { s.status = 'pending'; afterStopChange(true); });
   }
-  mk((hasAnyNote(s) ? '⚠️ Melding bewerken' : '📢 Melding toevoegen'), 'grey', () => openNotes(i));
-  if (s.lat) mk('🗺 Open in Google Maps', 'grey', () => {
+  mk((hasAnyNote(s) ? ic('edit') + ' Melding bewerken' : ic('megaphone') + ' Melding toevoegen'), 'grey', () => openNotes(i));
+  if (s.lat) mk(ic('map') + ' Open in Google Maps', 'grey', () => {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving`, '_blank');
   });
-  mk('🗑 Verwijder uit rit', 'red', () => {
+  mk(ic('trash') + ' Verwijder uit rit', 'red', () => {
     if (confirm('Stop verwijderen?')) { state.stops.splice(i, 1); afterStopChange(true); }
   });
   openPanel('panel-stopmenu');
@@ -1849,7 +1949,7 @@ function closeAdminLogin() { $('adminLoginModal').style.display = 'none'; }
 function adminLogin() {
   if ($('adminUser').value.trim() === ADMIN_USER && $('adminPass').value === ADMIN_PASS) {
     closeAdminLogin(); renderAdminContent(); $('adminPanel').style.display = 'flex';
-  } else { $('adminErr').textContent = '⚠️ Onjuiste inloggegevens'; }
+  } else { $('adminErr').textContent = 'Onjuiste inloggegevens'; }
 }
 function closeAdmin() { $('adminPanel').style.display = 'none'; }
 
@@ -1881,46 +1981,46 @@ function renderAdminContent() {
   const noteRows = noteEntries.map(([k,v], i) => {
     const t = typeof v === 'string' ? v : (v.text || '');
     const c = typeof v === 'object' ? (v.count || 1) : 1;
-    return '<div class="aRow"><div class="aInfo"><b>' + k + '</b><br>' + t + ' <span style="color:#d40511">(' + c + '×)</span></div><button class="btn red small" onclick="adminDelNoteIdx(' + i + ')">🗑</button></div>';
+    return '<div class="aRow"><div class="aInfo"><b>' + k + '</b><br>' + t + ' <span style="color:#d40511">(' + c + '×)</span></div><button class="btn red small" onclick="adminDelNoteIdx(' + i + ')">' + ic('trash') + '</button></div>';
   }).join('');
 
   const persoRows = personalEntries.map(([k,v], i) => {
     const t = typeof v === 'string' ? v : (v.text || '');
     const bid = (k.match(/__p__([^_]+)__/) || [])[1] || '?';
-    return '<div class="aRow"><div class="aInfo"><span style="color:#8a93a0">👤 ' + bid + '</span><br>' + t + '</div><button class="btn red small" onclick="adminDelPersoIdx(' + i + ')">🗑</button></div>';
+    return '<div class="aRow"><div class="aInfo"><span style="color:#8a93a0">' + ic('user','sm') + ' ' + bid + '</span><br>' + t + '</div><button class="btn red small" onclick="adminDelPersoIdx(' + i + ')">' + ic('trash') + '</button></div>';
   }).join('');
 
   const profRows = profiles.map((p, i) => {
-    return '<div class="aRow"><div class="aInfo"><b>' + (p.name || 'Onbekend') + '</b> · ' + p.id + '<br><span style="color:#8a93a0">Radius: ' + (p.radius || '?') + 'm · Melding: ' + (p.notifyDist || '?') + 'm · ' + (p.darkMode ? '🌙' : '☀️') + '</span></div><button class="btn red small" onclick="adminDelProfIdx(' + i + ')">🗑</button></div>';
+    return '<div class="aRow"><div class="aInfo"><b>' + (p.name || 'Onbekend') + '</b> · ' + p.id + '<br><span style="color:#8a93a0">Radius: ' + (p.radius || '?') + 'm · Melding: ' + (p.notifyDist || '?') + 'm · ' + (p.darkMode ? ic('moon','sm') : ic('sun','sm')) + '</span></div><button class="btn red small" onclick="adminDelProfIdx(' + i + ')">' + ic('trash') + '</button></div>';
   }).join('');
 
   $('adminContent').innerHTML =
     '<div class="aSection">' +
-      '<h3>🧪 Test modus</h3>' +
+      '<h3>' + ic('flask','sm') + ' Test modus</h3>' +
       '<div style="display:flex;align-items:center;gap:12px">' +
         '<button class="switch ' + (testMode ? 'on' : '') + '" onclick="toggleTestMode()"></button>' +
         '<span style="font-size:14px;color:#5b6470">' + (testMode ? '<b style="color:#ff6d00">Aan</b> — opslaan uitgeschakeld' : 'Uit — normale werking') + '</span>' +
       '</div>' +
     '</div>' +
     '<div class="aSection">' +
-      '<h3>📢 Gedeelde meldingen (' + noteEntries.length + ' adressen)</h3>' +
+      '<h3>' + ic('megaphone','sm') + ' Gedeelde meldingen (' + noteEntries.length + ' adressen)</h3>' +
       (noteEntries.length === 0 ? '<p style="color:#8a93a0;font-size:13px">Geen meldingen.</p>' : noteRows) +
-      (noteEntries.length > 0 ? '<button class="btn red" style="width:100%;margin-top:8px" onclick="adminClearNotes()">🗑 Alle meldingen wissen</button>' : '') +
+      (noteEntries.length > 0 ? '<button class="btn red" style="width:100%;margin-top:8px" onclick="adminClearNotes()">' + ic('trash') + ' Alle meldingen wissen</button>' : '') +
     '</div>' +
     '<div class="aSection">' +
-      '<h3>🔒 Persoonlijke meldingen (' + personalEntries.length + ')</h3>' +
+      '<h3>' + ic('lock','sm') + ' Persoonlijke meldingen (' + personalEntries.length + ')</h3>' +
       (personalEntries.length === 0 ? '<p style="color:#8a93a0;font-size:13px">Geen persoonlijke meldingen.</p>' : persoRows) +
     '</div>' +
     '<div class="aSection">' +
-      '<h3>👤 Rijdersprofielen (' + profiles.length + ')</h3>' +
+      '<h3>' + ic('user','sm') + ' Rijdersprofielen (' + profiles.length + ')</h3>' +
       (profiles.length === 0 ? '<p style="color:#8a93a0;font-size:13px">Geen profielen.</p>' : profRows) +
-      (profiles.length > 0 ? '<button class="btn red" style="width:100%;margin-top:8px" onclick="adminClearProfiles()">🗑 Alle profielen wissen</button>' : '') +
+      (profiles.length > 0 ? '<button class="btn red" style="width:100%;margin-top:8px" onclick="adminClearProfiles()">' + ic('trash') + ' Alle profielen wissen</button>' : '') +
     '</div>' +
     '<div class="aSection">' +
-      '<h3>⚙️ Beheer</h3>' +
-      '<button class="btn" style="width:100%;margin-bottom:8px" onclick="adminExport()">📤 Data exporteren (JSON)</button>' +
-      '<button class="btn orange" style="width:100%;margin-bottom:8px" onclick="adminClearCache()">🗑 Geocode cache wissen (' + (cacheSize/1024).toFixed(1) + ' KB)</button>' +
-      '<button class="btn red" style="width:100%" onclick="adminClearAll()">💥 Alle app-data wissen</button>' +
+      '<h3>' + ic('settings','sm') + ' Beheer</h3>' +
+      '<button class="btn" style="width:100%;margin-bottom:8px" onclick="adminExport()">' + ic('download') + ' Data exporteren (JSON)</button>' +
+      '<button class="btn orange" style="width:100%;margin-bottom:8px" onclick="adminClearCache()">' + ic('database') + ' Geocode cache wissen (' + (cacheSize/1024).toFixed(1) + ' KB)</button>' +
+      '<button class="btn red" style="width:100%" onclick="adminClearAll()">' + ic('trash') + ' Alle app-data wissen</button>' +
     '</div>' +
     '<div style="text-align:center;color:#8a93a0;font-size:12px;padding:8px 0 20px">localStorage: ' + totalKB + ' KB totaal</div>';
 }
@@ -1963,7 +2063,7 @@ function adminExport() {
 
 
 const TURN_ICONS = { 'turn-right':'↱', 'turn-left':'↰', 'turn-sharp-right':'⤷', 'turn-sharp-left':'⤶',
-  'turn-slight-right':'↗', 'turn-slight-left':'↖', 'uturn':'↩', 'roundabout':'⟳', 'merge':'↑', 'depart':'↑', 'arrive':'🏁' };
+  'turn-slight-right':'↗', 'turn-slight-left':'↖', 'uturn':'↩', 'roundabout':'⟳', 'merge':'↑', 'depart':'↑', 'arrive':'⚑' };
 function updateTurnRow() {
   if (!lastPos || !state.routeSteps.length) { $('turnRow').style.display = 'none'; return; }
   let best = null, bestD = Infinity;
@@ -2039,14 +2139,14 @@ function renderNotesList(s) {
       : shared.count >= thr ? '' : ` <span style="color:#8a93a0;font-size:12px">(nog ${thr - shared.count}× nodig voor popup)</span>`;
     html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span>${shared.text}${countLabel}</span>
-      <button class="btn red small" onclick="deleteSharedNote()">🗑</button>
+      <button class="btn red small" onclick="deleteSharedNote()">${ic('trash')}</button>
     </div>`;
   }
   const personal = getPersonalNote(s);
   if (personal) {
     html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center;background:#fff8e1">
-      <span>${personal.text} <span style="color:#8a93a0;font-size:12px">🔒 persoonlijk</span></span>
-      <button class="btn red small" onclick="deletePersonalNote()">🗑</button>
+      <span>${personal.text} <span style="color:#8a93a0;font-size:12px">${ic('lock','sm')} persoonlijk</span></span>
+      <button class="btn red small" onclick="deletePersonalNote()">${ic('trash')}</button>
     </div>`;
   }
   if (!html) {
@@ -2118,10 +2218,10 @@ function saveSetupAndStart() {
 function saveProfileAndConfirm() {
   saveDriverProfile();
   const btn = $('saveProfileBtn');
-  const orig = btn.textContent;
-  btn.textContent = '✓ Opgeslagen!';
+  const orig = btn.innerHTML;
+  btn.innerHTML = ic('check') + ' Opgeslagen!';
   btn.style.background = '#43a047';
-  setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+  setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 2000);
 }
 
 /* ---------- PER-RIJDER INSTELLINGEN ---------- */
