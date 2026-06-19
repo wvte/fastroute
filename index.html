@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 19: vloeiender draaien, auto-afronden op depot, snap naar weg (17-06-2026) -->
+<!-- Build 20: fixes chauffeur, admin-paneel, compacte onderbalk, GPS-offset (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -86,9 +86,10 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 #navTop .meta{font-size:15px;opacity:.85;}
 #navTop .dist{font-size:26px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;}
 #navTop .dist small{display:block;font-size:13px;color:#fff;opacity:.8;font-weight:400;}
-#navBottom{flex:0 0 auto;background:var(--card);padding:11px 12px calc(env(safe-area-inset-bottom) + 11px);display:flex;gap:9px;z-index:500;box-shadow:0 -3px 14px rgba(0,0,0,.10);border-top:1px solid var(--border);}
-#navBottom .btn{flex-direction:column;gap:3px;font-size:14px;font-weight:800;padding:10px 4px;line-height:1.15;border-radius:15px;box-shadow:none;}
-#navBottom .btn .ic{display:block;font-size:24px;}
+#navBottom{flex:0 0 auto;background:var(--card);padding:6px 10px calc(env(safe-area-inset-bottom) + 5px);display:flex;gap:8px;z-index:500;box-shadow:0 -3px 14px rgba(0,0,0,.10);border-top:1px solid var(--border);}
+#navBottom .btn{flex-direction:column;gap:2px;font-size:13px;font-weight:800;padding:7px 4px;line-height:1.1;border-radius:13px;box-shadow:none;}
+#navBottom .btn .ic{display:block;font-size:22px;}
+#navBottom .btn .ic .lic{width:22px;height:22px;}
 .fab{position:absolute;z-index:500;background:var(--card);color:var(--text);border:none;border-radius:50%;width:54px;height:54px;font-size:24px;box-shadow:var(--shadow-md);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s ease;}
 .fab:active{transform:scale(.92);}
 .fab .lic{width:25px;height:25px;}
@@ -403,6 +404,24 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px">RouteFast v1.0 · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
+</div>
+
+<!-- ADMIN LOGIN MODAL -->
+<div id="adminLoginModal">
+  <div class="alCard">
+    <h2>Admin login</h2>
+    <input id="adminUser" placeholder="Gebruiker" autocapitalize="off" autocorrect="off" autocomplete="off">
+    <input id="adminPass" type="password" placeholder="Wachtwoord" autocomplete="off">
+    <div class="err" id="adminErr"></div>
+    <button class="btn" onclick="adminLogin()">Inloggen</button>
+    <button class="btn grey" style="margin-top:8px" onclick="closeAdminLogin()">Annuleren</button>
+  </div>
+</div>
+
+<!-- ADMIN PANEEL -->
+<div id="adminPanel">
+  <div class="aHead"><h2>Admin paneel</h2><button class="btn grey small" onclick="closeAdmin()">Sluiten</button></div>
+  <div id="adminContent"></div>
 </div>
 
 <script>
@@ -986,7 +1005,7 @@ function mapCenter() {
   map.easeTo({
     center: [lastPos.lon, lastPos.lat],
     bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-    offset: [0, screenH * offsetFrac],
+    offset: [0, -screenH * offsetFrac],
     duration: 450,
     essential: true
   });
@@ -1659,7 +1678,7 @@ function cycleFabCenter() {
       center: [lastPos.lon, lastPos.lat],
       zoom: z,
       bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-      offset: [0, screenH * offsetFrac],
+      offset: [0, -screenH * offsetFrac],
       duration: 500,
       essential: true
     });
@@ -1954,6 +1973,8 @@ function syncSettingsUI() {
   $('swSound').classList.toggle('on', state.settings.sound);
   const ov = state.settings.gpsOffset != null ? state.settings.gpsOffset : 22;
   $('gpsOffset').value = ov; $('offsetVal').textContent = ov;
+  const dRide = state.rides && state.rides[state.rideIdx];
+  if ($('driverDisplay')) $('driverDisplay').textContent = (dRide && (dRide.bezorger || dRide.bezorgerId)) ? (dRide.bezorger || '') + (dRide.bezorgerId ? ' (' + dRide.bezorgerId + ')' : '') : '—';
   $('swDark').classList.toggle('on', !!state.settings.darkMode);
   applyDark(!!state.settings.darkMode);
 }
@@ -2271,6 +2292,7 @@ function saveDriverProfile() {
     notifyDist: state.settings.notifyDist,
     radius: state.settings.radius,
     darkMode: state.settings.darkMode,
+    gpsOffset: state.settings.gpsOffset,
   };
   try { localStorage.setItem(PROFILE_KEY + '_' + pid, JSON.stringify(profile)); } catch {}
 }
