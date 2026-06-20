@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 20: fixes chauffeur, admin-paneel, compacte onderbalk, GPS-offset (17-06-2026) -->
+<!-- Build 21: GPS-offset schuif gekalibreerd (links=laag, rechts=midden) (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -1005,7 +1005,7 @@ function mapCenter() {
   map.easeTo({
     center: [lastPos.lon, lastPos.lat],
     bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-    offset: [0, -screenH * offsetFrac],
+    offset: [0, screenH * (0.45 - offsetFrac)],
     duration: 450,
     essential: true
   });
@@ -1678,7 +1678,7 @@ function cycleFabCenter() {
       center: [lastPos.lon, lastPos.lat],
       zoom: z,
       bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-      offset: [0, -screenH * offsetFrac],
+      offset: [0, screenH * (0.45 - offsetFrac)],
       duration: 500,
       essential: true
     });
