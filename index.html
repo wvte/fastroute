@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 23: GPS-offset schaal gekalibreerd op echte schermposities (17-06-2026) -->
+<!-- Build 24: live GPS-positie afstelknop op de kaart + groter bereik (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -93,6 +93,10 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 .fab{position:absolute;z-index:500;background:var(--card);color:var(--text);border:none;border-radius:50%;width:54px;height:54px;font-size:24px;box-shadow:var(--shadow-md);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s ease;}
 .fab:active{transform:scale(.92);}
 .fab .lic{width:25px;height:25px;}
+#gpsCalibBar{position:absolute;left:0;right:0;bottom:0;z-index:700;background:var(--card);box-shadow:0 -4px 16px rgba(0,0,0,.2);padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);display:none;flex-direction:column;gap:10px;border-top:2px solid var(--accent);}
+#gpsCalibBar.open{display:flex;}
+#gpsCalibBar .gcTop{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:15px;color:var(--text);}
+#gpsCalibBar input[type=range]{width:100%;}
 #fabCenter{right:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
 #fabCenter .fci{font-size:22px;line-height:1;}
 #fabCenter .fcl{font-size:8px;font-weight:900;letter-spacing:.4px;color:#d40511;}
@@ -305,6 +309,11 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   <button class="fab" id="fabZoomIn" onclick="map.zoomIn()">＋</button>
   <button class="fab" id="fabZoomOut" onclick="map.zoomOut()">－</button>
   <button class="fab" id="fabCenter" onclick="cycleFabCenter()"><span class="fci" id="fabCenterIcon"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span><span class="fcl" id="fabCenterLabel">HEADING</span></button>
+  <div id="gpsCalibBar">
+    <div class="gcTop"><span>GPS-positie aanpassen</span><span id="gcVal"></span></div>
+    <input type="range" min="0" max="45" step="1" id="gpsCalibSlider" oninput="onGpsCalibInput(this.value)">
+    <button class="btn" onclick="closeGpsCalib()">Klaar</button>
+  </div>
   <div id="navBottom">
     <button class="btn green" onclick="completeCurrent()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Klaar</button>
     <button class="btn orange" onclick="skipCurrent()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></svg></span>Overslaan</button>
@@ -386,6 +395,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Auto-zoom bij bochten</span><button class="switch" id="swAutoZoom" onclick="toggleSet('autoZoom','swAutoZoom')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
       <div class="setrow"><span>GPS-positie op scherm: <b id="offsetVal"></b>%</span><input type="range" min="0" max="45" step="5" id="gpsOffset" oninput="setGpsOffset(this.value)"></div>
+      <div style="padding:2px 4px 10px"><button class="btn small grey" style="width:100%" onclick="openGpsCalib()">Op de kaart aanpassen (live)</button></div>
       <div style="padding:14px 4px;border-bottom:1px solid #eef1f5">
         <div style="font-size:17px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><svg class="lic" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Depot (terugkeer na laatste stop)</div>
         <input class="txt" id="depotAddr" placeholder="bijv. Wattstraat 3, Raalte">
@@ -401,7 +411,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 23</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 24</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1005,7 +1015,7 @@ function mapCenter() {
   map.easeTo({
     center: [lastPos.lon, lastPos.lat],
     bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-    offset: [0, screenH * (0.52 - offsetFrac)],
+    offset: [0, screenH * (0.59 - 1.5 * offsetFrac)],
     duration: 450,
     essential: true
   });
@@ -1678,7 +1688,7 @@ function cycleFabCenter() {
       center: [lastPos.lon, lastPos.lat],
       zoom: z,
       bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-      offset: [0, screenH * (0.52 - offsetFrac)],
+      offset: [0, screenH * (0.59 - 1.5 * offsetFrac)],
       duration: 500,
       essential: true
     });
@@ -1955,6 +1965,15 @@ async function addStop(mode) {
 function setRadius(v) { state.settings.radius = +v; $('radVal').textContent = v; persist(); }
 function setNotifyDist(v) { state.settings.notifyDist = +v; $('notifyVal').textContent = v; persist(); }
 function setGpsOffset(v) { state.settings.gpsOffset = +v; $('offsetVal').textContent = v; persist(); if (map && lastPos) mapCenter(); }
+function onGpsCalibInput(v) { setGpsOffset(v); $('gcVal').textContent = v + '%'; }
+function openGpsCalib() {
+  closePanel('panel-settings');
+  const v = state.settings.gpsOffset != null ? state.settings.gpsOffset : 22;
+  $('gpsCalibSlider').value = v; $('gcVal').textContent = v + '%';
+  $('gpsCalibBar').classList.add('open');
+  if (map && lastPos) mapCenter();
+}
+function closeGpsCalib() { $('gpsCalibBar').classList.remove('open'); syncSettingsUI(); }
 function toggleSet(key, btnId) {
   state.settings[key] = !state.settings[key];
   $(btnId).classList.toggle('on', state.settings[key]);
