@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 24: live GPS-positie afstelknop op de kaart + groter bereik (17-06-2026) -->
+<!-- Build 25: GPS-positie vast op 15% (slider verwijderd) (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -309,11 +309,6 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   <button class="fab" id="fabZoomIn" onclick="map.zoomIn()">＋</button>
   <button class="fab" id="fabZoomOut" onclick="map.zoomOut()">－</button>
   <button class="fab" id="fabCenter" onclick="cycleFabCenter()"><span class="fci" id="fabCenterIcon"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span><span class="fcl" id="fabCenterLabel">HEADING</span></button>
-  <div id="gpsCalibBar">
-    <div class="gcTop"><span>GPS-positie aanpassen</span><span id="gcVal"></span></div>
-    <input type="range" min="0" max="45" step="1" id="gpsCalibSlider" oninput="onGpsCalibInput(this.value)">
-    <button class="btn" onclick="closeGpsCalib()">Klaar</button>
-  </div>
   <div id="navBottom">
     <button class="btn green" onclick="completeCurrent()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Klaar</button>
     <button class="btn orange" onclick="skipCurrent()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></svg></span>Overslaan</button>
@@ -394,8 +389,6 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Auto-zoom bij bochten</span><button class="switch" id="swAutoZoom" onclick="toggleSet('autoZoom','swAutoZoom')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
-      <div class="setrow"><span>GPS-positie op scherm: <b id="offsetVal"></b>%</span><input type="range" min="0" max="45" step="5" id="gpsOffset" oninput="setGpsOffset(this.value)"></div>
-      <div style="padding:2px 4px 10px"><button class="btn small grey" style="width:100%" onclick="openGpsCalib()">Op de kaart aanpassen (live)</button></div>
       <div style="padding:14px 4px;border-bottom:1px solid #eef1f5">
         <div style="font-size:17px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><svg class="lic" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Depot (terugkeer na laatste stop)</div>
         <input class="txt" id="depotAddr" placeholder="bijv. Wattstraat 3, Raalte">
@@ -411,7 +404,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 24</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 25</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1015,7 +1008,7 @@ function mapCenter() {
   map.easeTo({
     center: [lastPos.lon, lastPos.lat],
     bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-    offset: [0, screenH * (0.59 - 1.5 * offsetFrac)],
+    offset: [0, -0.085 * screenH],
     duration: 450,
     essential: true
   });
@@ -1688,7 +1681,7 @@ function cycleFabCenter() {
       center: [lastPos.lon, lastPos.lat],
       zoom: z,
       bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-      offset: [0, screenH * (0.59 - 1.5 * offsetFrac)],
+      offset: [0, -0.085 * screenH],
       duration: 500,
       essential: true
     });
@@ -1990,8 +1983,6 @@ function syncSettingsUI() {
   if ($('swAutoZoom')) $('swAutoZoom').classList.toggle('on', !!state.settings.autoZoom);
   $('swOpt').classList.toggle('on', state.settings.optimize);
   $('swSound').classList.toggle('on', state.settings.sound);
-  const ov = state.settings.gpsOffset != null ? state.settings.gpsOffset : 22;
-  $('gpsOffset').value = ov; $('offsetVal').textContent = ov;
   const dRide = state.rides && state.rides[state.rideIdx];
   if ($('driverDisplay')) $('driverDisplay').textContent = (dRide && (dRide.bezorger || dRide.bezorgerId)) ? (dRide.bezorger || '') + (dRide.bezorgerId ? ' (' + dRide.bezorgerId + ')' : '') : '—';
   $('swDark').classList.toggle('on', !!state.settings.darkMode);
