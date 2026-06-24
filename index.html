@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 26: GPS-positie vast op stand 15 (lager, ~38% hoogte) (17-06-2026) -->
+<!-- Build 27: minder witruimte onderbalk + lijn loopt live mee (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -38,8 +38,8 @@ body.dark input.txt,body.dark #addNote,body.dark #addPC,body.dark #addNR,body.da
 body.dark #arrivePop .apPkg{background:#0f1520;}
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;height:100%;font-family:var(--font);background:var(--bg);color:var(--text);overscroll-behavior:none;-webkit-font-smoothing:antialiased;letter-spacing:-.01em;}
-body{height:100dvh;} /* geen dode witte balk onder de knoppen op iOS */
-.screen{display:none;height:100%;flex-direction:column;}
+body{height:100dvh;overflow:hidden;} /* geen dode witte balk onder de knoppen op iOS */
+.screen{display:none;height:100dvh;flex-direction:column;}
 .screen.active{display:flex;}
 header.bar{background:linear-gradient(180deg,#e10613,#c30410);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;font-size:21px;font-weight:800;display:flex;align-items:center;gap:11px;flex:0 0 auto;border-bottom:3px solid var(--accent);box-shadow:0 2px 10px rgba(16,20,26,.12);letter-spacing:-.02em;}
 header.bar .sub{font-size:13px;font-weight:500;opacity:.85;display:block;}
@@ -86,7 +86,7 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 #navTop .meta{font-size:15px;opacity:.85;}
 #navTop .dist{font-size:26px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;}
 #navTop .dist small{display:block;font-size:13px;color:#fff;opacity:.8;font-weight:400;}
-#navBottom{flex:0 0 auto;background:var(--card);padding:6px 10px calc(env(safe-area-inset-bottom) + 5px);display:flex;gap:8px;z-index:500;box-shadow:0 -3px 14px rgba(0,0,0,.10);border-top:1px solid var(--border);}
+#navBottom{flex:0 0 auto;background:var(--card);padding:6px 10px calc(env(safe-area-inset-bottom) + 2px);display:flex;gap:8px;z-index:500;box-shadow:0 -3px 14px rgba(0,0,0,.10);border-top:1px solid var(--border);}
 #navBottom .btn{flex-direction:column;gap:2px;font-size:13px;font-weight:800;padding:7px 4px;line-height:1.1;border-radius:13px;box-shadow:none;}
 #navBottom .btn .ic{display:block;font-size:22px;}
 #navBottom .btn .ic .lic{width:22px;height:22px;}
@@ -404,7 +404,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 26</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 27</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1095,6 +1095,30 @@ function drawRoute() {
     geometry: state.routeGeom || { type: 'LineString', coordinates: [] }
   });
 }
+/* Live meeknippen: teken de route vanaf de huidige positie, elke frame, zonder netwerk.
+   Zo loopt de lijn net zo vlot mee als de GPS-stip. */
+function drawRouteClipped(lat, lon) {
+  if (!map) return;
+  const src = map.getSource('route');
+  if (!src) return;
+  const g = state.routeGeom;
+  if (!g || !g.coordinates || g.coordinates.length < 2) return;
+  const c = g.coordinates;
+  const kx = Math.cos(lat * Math.PI / 180);
+  const px = lon * kx, py = lat;
+  let bi = 0, bLon = c[0][0], bLat = c[0][1], bd2 = Infinity;
+  for (let i = 0; i < c.length - 1; i++) {
+    const ax = c[i][0] * kx, ay = c[i][1], bx = c[i + 1][0] * kx, by = c[i + 1][1];
+    const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const sx = ax + dx * t, sy = ay + dy * t, ex = px - sx, ey = py - sy, d2 = ex * ex + ey * ey;
+    if (d2 < bd2) { bd2 = d2; bi = i; bLon = sx / kx; bLat = sy; }
+  }
+  const coords = [[bLon, bLat]];
+  for (let i = bi + 1; i < c.length; i++) coords.push(c[i]);
+  src.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } });
+}
 
 /* ---------- GPS & AUTO-AFVINKEN ---------- */
 let gpsRetryTimer = null, gpsLost = false;
@@ -1256,6 +1280,7 @@ function smoothMarker() {
     if (snap && snap.dist < 30) { dLat = snap.lat; dLon = snap.lon; }
   }
   gpsMarker.setLngLat([dLon, dLat]);
+  drawRouteClipped(dLat, dLon);
   interpRaf = requestAnimationFrame(smoothMarker);
 }
 
