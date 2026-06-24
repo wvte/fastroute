@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 25: GPS-positie vast op 15% (slider verwijderd) (17-06-2026) -->
+<!-- Build 26: GPS-positie vast op stand 15 (lager, ~38% hoogte) (17-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -404,7 +404,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 25</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 26</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1008,7 +1008,7 @@ function mapCenter() {
   map.easeTo({
     center: [lastPos.lon, lastPos.lat],
     bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-    offset: [0, -0.085 * screenH],
+    offset: [0, 0.365 * screenH],
     duration: 450,
     essential: true
   });
@@ -1681,7 +1681,7 @@ function cycleFabCenter() {
       center: [lastPos.lon, lastPos.lat],
       zoom: z,
       bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
-      offset: [0, -0.085 * screenH],
+      offset: [0, 0.365 * screenH],
       duration: 500,
       essential: true
     });
