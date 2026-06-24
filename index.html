@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 27: minder witruimte onderbalk + lijn loopt live mee (17-06-2026) -->
+<!-- Build 28: offline kaart-cache, drag-and-drop stops, adres zoeken, alle huisnummers op kaart, einde-rit overzicht fix (24-06-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -230,6 +230,28 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 .aRow:last-of-type{border-bottom:none;}
 .aRow .aInfo{flex:1;min-width:0;word-break:break-word;}
 #testBar{display:none;background:#ff6d00;color:#fff;text-align:center;padding:4px 8px;font-size:12px;font-weight:700;position:fixed;top:0;left:0;right:0;z-index:2800;}
+/* ---- EINDE-RIT OVERZICHT ---- */
+#rideCompleteScreen{display:none;position:fixed;inset:0;z-index:2700;background:linear-gradient(160deg,#e10613,#9c0009);overflow-y:auto;}
+/* ---- OFFLINE INDICATOR ---- */
+#offlinePill{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 92px);z-index:1200;background:#10141a;color:var(--accent);font-size:13px;font-weight:700;padding:7px 14px;border-radius:99px;box-shadow:0 3px 12px rgba(0,0,0,.35);display:none;align-items:center;gap:7px;}
+#offlinePill.show{display:flex;}
+/* ---- SLEEPHANDVAT STOPLIJST ---- */
+.stop-row .drag-handle{flex:0 0 26px;display:flex;align-items:center;justify-content:center;color:var(--grey);cursor:grab;touch-action:none;margin-left:-4px;}
+.stop-row .drag-handle .lic{width:20px;height:20px;}
+.stop-row.dragging{opacity:.4;}
+.stop-row.drag-over{box-shadow:inset 0 3px 0 var(--accent);}
+.stop-ghost{position:fixed;left:0;right:0;z-index:1500;pointer-events:none;background:var(--card);box-shadow:var(--shadow-lg);border-radius:12px;border:2px solid var(--accent);opacity:.96;}
+/* ---- ADRES ZOEKEN BIJ NIEUWE STOP ---- */
+#addSearchResults{margin:2px 0 6px;}
+.addsr{display:flex;align-items:center;gap:9px;padding:11px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:15px;}
+.addsr:active{background:var(--bg);}
+.addsr .lic{width:18px;height:18px;color:var(--blue);flex:0 0 auto;}
+.addsr .asTxt{flex:1;min-width:0;}
+.addsr .asTxt b{font-weight:700;}
+.addsr .asTxt small{display:block;color:var(--text-soft);font-size:13px;}
+.addsep{display:flex;align-items:center;gap:10px;color:var(--text-soft);font-size:13px;margin:14px 0 10px;}
+.addsep::before,.addsep::after{content:'';flex:1;height:1px;background:var(--border);}
+body.dark .addsr:active{background:#0f1520;}
 </style>
 </head>
 <body>
@@ -341,6 +363,9 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   <div class="sheet">
     <h2>Nieuwe stop<button class="x" onclick="closePanel('panel-addstop')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="body">
+      <input class="txt" id="addSearch" placeholder="Zoek adres, bijv. Wattstraat 3 Raalte" oninput="onAddSearchInput()" autocomplete="off">
+      <div id="addSearchResults"></div>
+      <div class="addsep">of vul handmatig in</div>
       <input class="txt" id="addPC" placeholder="Postcode (bijv. 8131GG)" autocapitalize="characters">
       <input class="txt" id="addNR" placeholder="Huisnummer (bijv. 8 of 22 B)">
       <input class="txt" id="addNote" placeholder="Notitie / naam (optioneel)">
@@ -388,6 +413,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div class="setrow"><span>Automatisch afvinken (GPS)</span><button class="switch" id="swAuto" onclick="toggleSet('autoAdvance','swAuto')"></button></div>
       <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Auto-zoom bij bochten</span><button class="switch" id="swAutoZoom" onclick="toggleSet('autoZoom','swAutoZoom')"></button></div>
+      <div class="setrow"><span>Alle huisnummers op kaart</span><button class="switch" id="swAllHnr" onclick="toggleSet('allHouseNumbers','swAllHnr')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
       <div style="padding:14px 4px;border-bottom:1px solid #eef1f5">
         <div style="font-size:17px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><svg class="lic" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Depot (terugkeer na laatste stop)</div>
@@ -404,7 +430,7 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 27</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 28</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -426,6 +452,12 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
   <div class="aHead"><h2>Admin paneel</h2><button class="btn grey small" onclick="closeAdmin()">Sluiten</button></div>
   <div id="adminContent"></div>
 </div>
+
+<!-- EINDE-RIT OVERZICHT (dagstatistieken) -->
+<div id="rideCompleteScreen"></div>
+
+<!-- OFFLINE INDICATOR -->
+<div id="offlinePill"><svg class="lic sm" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 14 0"/><path d="m2 2 20 20"/></svg> Offline — opgeslagen kaart</div>
 
 <script>
 'use strict';
@@ -512,7 +544,7 @@ let state = {
   rideIdx: -1,
   stops: [],
   settings: { radius: 35, autoAdvance: true, optimize: true, sound: true, autoZoom: false, houseNumbers: true,
-    headingUp: true, notifyDist: 60, darkMode: false, gpsOffset: 22,
+    allHouseNumbers: true, headingUp: true, notifyDist: 60, darkMode: false, gpsOffset: 22,
     depot: { label: 'Wattstraat 3, Raalte', lat: null, lon: null } },
   routeGeom: null,
   routeSteps: [],       // OSRM stappen voor volgende afslag
@@ -1033,6 +1065,7 @@ function initMap() {
     // Accuracy-cirkel als puls
     map.addSource('gps-acc', { type: 'geojson', data: { type: 'Feature', properties: { acc: 20 }, geometry: { type: 'Point', coordinates: [6.13, 52.35] } } });
     map.addLayer({ id: 'gps-acc', type: 'circle', source: 'gps-acc', paint: { 'circle-color': '#2563eb', 'circle-opacity': 0.12, 'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 10, 0, 20, ['/', ['get', 'acc'], 0.075]], 'circle-stroke-width': 1, 'circle-stroke-color': '#2563eb', 'circle-stroke-opacity': 0.4 } });
+    addAllHouseNumbers();
     drawStops(); drawRoute();
   });
   const withPos = state.stops.filter(s => s.lat);
@@ -1069,6 +1102,29 @@ function drawStops() {
     const m = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lon, s.lat]).addTo(map);
     stopMarkers.push(m);
   });
+}
+
+function addAllHouseNumbers() {
+  // Toon ALLE OSM-huisnummers (niet alleen de stops) via de bestaande
+  // openfreemap vectorbron, zodat je ziet langs welke huizen je rijdt.
+  if (!map || map.getLayer('all-hnr')) return;
+  let srcId = null;
+  const sources = (map.getStyle() && map.getStyle().sources) || {};
+  for (const id in sources) { if (sources[id].type === 'vector') { srcId = id; break; } }
+  if (!srcId) return;
+  try {
+    map.addLayer({
+      id: 'all-hnr', type: 'symbol', source: srcId, 'source-layer': 'housenumber', minzoom: 17,
+      layout: { 'text-field': ['coalesce', ['get', 'housenumber'], ['get', 'addr:housenumber']],
+        'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-allow-overlap': false, 'text-ignore-placement': false },
+      paint: { 'text-color': '#3b4654', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }
+    });
+  } catch (e) {}
+  applyAllHnrVisibility();
+}
+function applyAllHnrVisibility() {
+  if (map && map.getLayer('all-hnr'))
+    map.setLayoutProperty('all-hnr', 'visibility', state.settings.allHouseNumbers === false ? 'none' : 'visible');
 }
 
 function drawHouseNumbers() {
@@ -1877,19 +1933,95 @@ function renderStopList() {
   state.stops.forEach((s, i) => {
     const row = document.createElement('div');
     row.className = 'stop-row ' + s.status + (s === cur ? ' current' : '') + (s.seqs && !s.steeg ? ' multi' : '');
+    row.dataset.idx = i;
+    row.dataset.pending = s.status === 'pending' ? '1' : '0';
     const li = state.legInfo.find(l => l.stop === s);
     const hasNote = hasAnyNote(s);
-    row.innerHTML = `<div class="num">${s.status === 'done' ? ic('check') : s.status === 'skipped' ? ic('skip') : s.seq}</div>
+    const handle = s.status === 'pending' ? `<div class="drag-handle" title="Sleep om te verplaatsen">${ic('move')}</div>` : '';
+    row.innerHTML = handle + `<div class="num">${s.status === 'done' ? ic('check') : s.status === 'skipped' ? ic('skip') : s.seq}</div>
       <div class="info"><div class="a1">${s.street} ${s.huisnr}${s.toevoeging ? ' ' + s.toevoeging.replace(/^-/, '') : ''}${hasNote ? '<span class="note-dot" title="Melding aanwezig"></span>' : ''}</div>
       <div class="a2">${s.steeg ? ic('walk','sm') + ' steeg (ook ' + s.steegOther + ') · ' : ''}${s.seqs ? ic('package','sm') + ' ' + s.seqs.length + ' pakketten (nr ' + seqLabel(s) + ') · ' : ''}${s.postcode} ${s.city}${s.afhaal ? ' · ' + ic('package','sm') + ' AFHAAL' : ''}${s.sender ? ' · ' + s.sender : ''}${s.lat ? '' : ' · ' + ic('alert','sm') + ' geen positie'}</div></div>
       <div class="eta">${s.status === 'pending' && li ? fmtEta(li.cumDur).replace('aank. ', '') : ''}</div>`;
-    row.onclick = () => openStopMenu(i);
+    row.onclick = () => { if (justDraggedStops) return; openStopMenu(i); };
+    if (s.status === 'pending') {
+      const h = row.querySelector('.drag-handle');
+      if (h) h.addEventListener('pointerdown', e => startStopDrag(e, s));
+    }
     list.appendChild(row);
   });
   if (cur) {
     const el = list.querySelector('.stop-row.current');
     if (el) setTimeout(() => el.scrollIntoView({ block: 'center' }), 100);
   }
+}
+
+/* ---------- SLEPEN: stoplijst herordenen ---------- */
+let dragState = null, justDraggedStops = false;
+function startStopDrag(e, stopObj) {
+  e.preventDefault(); e.stopPropagation();
+  const handle = e.currentTarget;
+  const origRow = handle.closest('.stop-row');
+  if (!origRow) return;
+  const list = $('stopList');
+  const rect = origRow.getBoundingClientRect();
+  const ghost = origRow.cloneNode(true);
+  ghost.classList.add('stop-ghost');
+  ghost.style.width = rect.width + 'px';
+  ghost.style.height = rect.height + 'px';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  document.body.appendChild(ghost);
+  origRow.classList.add('dragging');
+  dragState = { stopObj, ghost, offsetY: e.clientY - rect.top, list, origRow, target: null, before: false, lastTarget: null, moved: false };
+  try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+  handle.addEventListener('pointermove', onStopDragMove);
+  handle.addEventListener('pointerup', onStopDragEnd);
+  handle.addEventListener('pointercancel', onStopDragEnd);
+  if (navigator.vibrate) navigator.vibrate(8);
+}
+function onStopDragMove(e) {
+  if (!dragState) return;
+  e.preventDefault();
+  dragState.moved = true;
+  dragState.ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
+  const c = dragState.list, cr = c.getBoundingClientRect();
+  if (e.clientY < cr.top + 55) c.scrollTop -= 9;
+  else if (e.clientY > cr.bottom - 55) c.scrollTop += 9;
+  const rows = [...c.querySelectorAll('.stop-row')].filter(r => r !== dragState.origRow && r.dataset.pending === '1');
+  let target = null, before = false;
+  for (const r of rows) {
+    const rr = r.getBoundingClientRect();
+    if (e.clientY < rr.top + rr.height / 2) { target = r; before = true; break; }
+    target = r; before = false;
+  }
+  if (dragState.lastTarget && dragState.lastTarget !== target) dragState.lastTarget.classList.remove('drag-over');
+  dragState.target = target; dragState.before = before; dragState.lastTarget = target;
+  if (target) target.classList.add('drag-over');
+}
+function onStopDragEnd(e) {
+  if (!dragState) return;
+  const handle = e.currentTarget;
+  const { ghost, origRow, target, before, stopObj, moved } = dragState;
+  if (ghost) ghost.remove();
+  origRow.classList.remove('dragging');
+  if (target) target.classList.remove('drag-over');
+  dragState = null;
+  try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+  handle.removeEventListener('pointermove', onStopDragMove);
+  handle.removeEventListener('pointerup', onStopDragEnd);
+  handle.removeEventListener('pointercancel', onStopDragEnd);
+  if (moved) { justDraggedStops = true; setTimeout(() => { justDraggedStops = false; }, 350); }
+  if (!target || !moved) return;
+  const toStop = state.stops[+target.dataset.idx];
+  if (!toStop || toStop === stopObj) return;
+  const from = state.stops.indexOf(stopObj);
+  if (from < 0) return;
+  state.stops.splice(from, 1);
+  let to = state.stops.indexOf(toStop);
+  if (!before) to += 1;
+  state.stops.splice(to, 0, stopObj);
+  if (navigator.vibrate) navigator.vibrate(14);
+  afterStopChange(true);
 }
 
 /* ---------- STOPMENU ---------- */
@@ -1942,6 +2074,7 @@ function moveToFront(i) {
 function openAddStop() {
   $('panel-stops').classList.remove('open');
   $('addMsg').textContent = '';
+  $('addSearch').value = ''; $('addSearchResults').innerHTML = '';
   $('panel-addstop').classList.add('open');
   history.replaceState({ screen: activeScreen(), panel: 'panel-addstop' }, '', '#/' + ROUTES[activeScreen()] + '/nieuwe-stop');
 }
@@ -1976,7 +2109,49 @@ async function addStop(mode) {
   state.stops.splice(insertIdx, 0, stop);
   closePanel('panel-addstop');
   $('addPC').value = ''; $('addNR').value = ''; $('addNote').value = '';
+  $('addSearch').value = ''; $('addSearchResults').innerHTML = '';
   afterStopChange(true);
+}
+
+/* ---------- ADRES ZOEKEN (nieuwe stop) ---------- */
+let addSearchTimer = null, addSearchSeq = 0;
+function onAddSearchInput() {
+  const q = $('addSearch').value.trim();
+  clearTimeout(addSearchTimer);
+  if (q.length < 3) { $('addSearchResults').innerHTML = ''; return; }
+  addSearchTimer = setTimeout(() => runAddSearch(q), 280);
+}
+async function runAddSearch(q) {
+  const seq = ++addSearchSeq;
+  try {
+    const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(q)}&fq=type:adres&rows=6`);
+    const docs = ((await r.json()).response || {}).docs || [];
+    if (seq !== addSearchSeq) return;
+    renderAddSearch(docs);
+  } catch (e) {
+    if (seq === addSearchSeq) $('addSearchResults').innerHTML = '<div style="padding:10px;color:var(--text-soft);font-size:14px">Zoeken mislukt — geen verbinding?</div>';
+  }
+}
+function renderAddSearch(docs) {
+  const box = $('addSearchResults');
+  if (!docs.length) { box.innerHTML = '<div style="padding:10px;color:var(--text-soft);font-size:14px">Geen adres gevonden.</div>'; return; }
+  box.innerHTML = '';
+  docs.forEach(d => {
+    const pc = (d.postcode || '').toUpperCase();
+    const nr = ('' + (d.huisnummer || '') + (d.huisletter ? ' ' + d.huisletter : '') + (d.huisnummertoevoeging ? ' ' + d.huisnummertoevoeging : '')).trim();
+    const row = document.createElement('div');
+    row.className = 'addsr';
+    row.innerHTML = ic('pin') + `<div class="asTxt"><b>${(d.straatnaam || '')} ${nr}</b><small>${pc} ${d.woonplaatsnaam || ''}</small></div>` + ic('chevronRight');
+    row.onclick = () => pickAddSearch(pc, nr);
+    box.appendChild(row);
+  });
+}
+function pickAddSearch(pc, nr) {
+  $('addPC').value = pc;
+  $('addNR').value = nr;
+  $('addSearch').value = '';
+  $('addSearchResults').innerHTML = '';
+  $('addMsg').innerHTML = ic('check', 'sm') + ' ' + pc + ' ' + nr + ' gekozen — kies hieronder waar je hem invoegt.';
 }
 
 /* ---------- INSTELLINGEN ---------- */
@@ -1997,6 +2172,7 @@ function toggleSet(key, btnId) {
   $(btnId).classList.toggle('on', state.settings[key]);
   persist();
   if (key === 'optimize' && state.settings.optimize) rebuildRoute(true).then(() => { drawStops(); updateNavCard(); });
+  if (key === 'allHouseNumbers') applyAllHnrVisibility();
 }
 function syncSettingsUI() {
   if (!state.settings.depot) state.settings.depot = { label: 'Wattstraat 3, Raalte', lat: null, lon: null };
@@ -2006,6 +2182,7 @@ function syncSettingsUI() {
   $('notifyDist').value = state.settings.notifyDist; $('notifyVal').textContent = state.settings.notifyDist;
   $('swAuto').classList.toggle('on', state.settings.autoAdvance);
   if ($('swAutoZoom')) $('swAutoZoom').classList.toggle('on', !!state.settings.autoZoom);
+  if ($('swAllHnr')) $('swAllHnr').classList.toggle('on', state.settings.allHouseNumbers !== false);
   $('swOpt').classList.toggle('on', state.settings.optimize);
   $('swSound').classList.toggle('on', state.settings.sound);
   const dRide = state.rides && state.rides[state.rideIdx];
@@ -2153,6 +2330,18 @@ function adminExport() {
     $('resumeInfo').textContent = `Rit ${saved.ride.rit} · ${saved.ride.bezorger} · ${done}/${saved.stops.length} stops gedaan`;
   }
 })();
+
+/* ---------- OFFLINE / SERVICE WORKER ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+function updateOnlineStatus() {
+  const pill = $('offlinePill');
+  if (pill) pill.classList.toggle('show', !navigator.onLine);
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
 
 
 const TURN_ICONS = { 'turn-right':'↱', 'turn-left':'↰', 'turn-sharp-right':'⤷', 'turn-sharp-left':'⤶',
