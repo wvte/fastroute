@@ -1116,9 +1116,7 @@ function addAllHouseNumbers() {
     map.addLayer({
       id: 'all-hnr', type: 'symbol', source: srcId, 'source-layer': 'housenumber', minzoom: 15,
       layout: { 'text-field': ['coalesce', ['get', 'housenumber'], ['get', 'addr:housenumber']],
-        'text-font': ['Noto Sans Regular'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 15, 9, 17, 11, 19, 13],
-        'text-allow-overlap': false, 'text-ignore-placement': false, 'text-padding': 1 },
+        'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 9, 17, 11, 19, 13], 'text-allow-overlap': false, 'text-ignore-placement': false, 'text-padding': 1 },
       paint: { 'text-color': '#3b4654', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }
     });
   } catch (e) {}
@@ -2531,3 +2529,10 @@ function loadDriverProfile(bezorgerId) {
     if (!raw) return;
     const p = JSON.parse(raw);
     Object.assign(state.settings, p);
+    syncSettingsUI();
+    applyDark(state.settings.darkMode);
+  } catch {}
+}
+</script>
+
+<!-
