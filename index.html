@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 28: offline kaart-cache, drag-and-drop stops, adres zoeken, alle huisnummers op kaart, einde-rit overzicht fix (24-06-2026) -->
+<!-- Build 29: vloeiende camera (per-frame follow), zachte kaartrotatie, soepel zoomen, panel- en popup-animaties (02-07-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -111,6 +111,14 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 @keyframes fadeIn{from{background:rgba(0,0,0,0);}to{background:rgba(0,0,0,.45);}}
 .panel .sheet{position:relative;background:var(--card);border-radius:var(--radius-lg) var(--radius-lg) 0 0;max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -8px 30px rgba(0,0,0,.25);animation:slideUp .24s cubic-bezier(.22,.61,.36,1);}
 @keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+/* Zacht sluiten: paneel glijdt omlaag en de achtergrond vervaagt */
+.panel.closing{animation:fadeOut .19s ease forwards;}
+.panel.closing .sheet{animation:slideDown .19s cubic-bezier(.55,.06,.68,.19) forwards;}
+@keyframes fadeOut{to{background:rgba(0,0,0,0);}}
+@keyframes slideDown{to{transform:translateY(100%);}}
+/* Popups verschijnen met een zachte pop i.p.v. hard aan/uit */
+#arrivePop,#notesPop{animation:popIn .22s cubic-bezier(.34,1.56,.64,1);}
+@keyframes popIn{from{opacity:0;transform:translate(-50%,-50%) scale(.86);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
 .panel .sheet::before{content:'';width:42px;height:5px;border-radius:99px;background:var(--border);position:absolute;top:9px;left:50%;transform:translateX(-50%);}
 .sheet h2{margin:0;padding:22px 18px 14px;font-size:20px;font-weight:800;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;letter-spacing:-.02em;}
 .sheet h2 .x{background:var(--bg);border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-soft);padding:0;}
@@ -328,8 +336,8 @@ body.dark .addsr:active{background:#0f1520;}
     <button class="nX" id="notesBegrepen" onclick="hideNotesPop()">Begrepen<div id="notesProgBar" style="position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,.25);pointer-events:none;transition:width linear;width:100%"></div></button>
   </div>
   <div id="map"></div>
-  <button class="fab" id="fabZoomIn" onclick="map.zoomIn()">＋</button>
-  <button class="fab" id="fabZoomOut" onclick="map.zoomOut()">－</button>
+  <button class="fab" id="fabZoomIn" onclick="fabZoom(1)">＋</button>
+  <button class="fab" id="fabZoomOut" onclick="fabZoom(-1)">－</button>
   <button class="fab" id="fabCenter" onclick="cycleFabCenter()"><span class="fci" id="fabCenterIcon"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span><span class="fcl" id="fabCenterLabel">HEADING</span></button>
   <div id="navBottom">
     <button class="btn green" onclick="completeCurrent()"><span class="ic"><svg class="lic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Klaar</button>
@@ -430,7 +438,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 28</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 29</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -568,6 +576,13 @@ function smoothBearing(prev, next, a) {
 let arriveLock = 0;
 // Smooth GPS interpolation
 let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, interpRaf = null;
+// Vloeiende camera: per-frame follow i.p.v. easeTo-pulsen per GPS-fix
+let camBearing = null, camZoomTarget = null, camLastTs = 0, camAnimUntil = 0, userZooming = false;
+function lerpBearing(prev, next, k) {
+  if (prev == null) return next;
+  const d = ((next - prev + 540) % 360) - 180; // kortste draairichting
+  return (prev + d * k + 360) % 360;
+}
 // Dwell time tracking
 let dwellStart = null, dwellStop = null;
 // Arrive popup auto-dismiss
@@ -798,14 +813,23 @@ function show(id) {
   else history.pushState({ screen: id }, '', url);
 }
 function openPanel(id) {
-  $(id).classList.add('open');
+  const p = $(id);
+  clearTimeout(p._closeT);
+  p.classList.remove('closing');
+  p.classList.add('open');
   if (!navInternal) {
     const scr = activeScreen();
     history.pushState({ screen: scr, panel: id }, '', '#/' + ROUTES[scr] + '/' + PANELS[id]);
   }
 }
 function closePanel(id) {
-  $(id).classList.remove('open');
+  const p = $(id);
+  // Zacht sluiten: eerst omlaag glijden, dan pas verbergen
+  if (p.classList.contains('open') && !p.classList.contains('closing')) {
+    p.classList.add('closing');
+    clearTimeout(p._closeT);
+    p._closeT = setTimeout(() => { p.classList.remove('open'); p.classList.remove('closing'); }, 190);
+  }
   // hoort deze paneel-entry bij de huidige history-state? Dan netjes terug
   if (!navInternal && history.state && history.state.panel === id) {
     navInternal = true;
@@ -1033,15 +1057,16 @@ async function updateNavLine() {
 
 /* ---------- KAART (MapLibre GL) ---------- */
 function mapCenter() {
-  // GPS-centrering met offset — één call doet alles vloeiend
+  // Eerste GPS-fix: één zachte easeTo naar de positie. Daarna neemt
+  // updateCamera() het per frame over (geen pulserende animaties meer).
   if (!map || !lastPos || trackMode === 'free') return;
   const screenH = map.getContainer().clientHeight;
-  const offsetFrac = (state.settings.gpsOffset != null ? state.settings.gpsOffset : 22) / 100;
+  camAnimUntil = Date.now() + 800;
   map.easeTo({
     center: [lastPos.lon, lastPos.lat],
     bearing: trackMode === 'heading' ? (lastHeading || 0) : 0,
     offset: [0, 0.365 * screenH],
-    duration: 450,
+    duration: 800,
     essential: true
   });
 }
@@ -1074,8 +1099,13 @@ function initMap() {
     map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 60, maxZoom: 16 });
   }
   map.on('dragstart', () => { if (trackMode !== 'free') { trackMode = 'free'; updateFabCenter(); } });
-  map.on('zoomstart', () => { saveNextZoom = true; });
-  map.on('zoomend', () => { if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); } saveNextZoom = false; });
+  // Alleen échte gebruikersgebaren (pinch) tellen als voorkeurszoom;
+  // camera- en autozoom-animaties overschrijven je voorkeur niet meer
+  map.on('zoomstart', e => { if (e && e.originalEvent) { userZooming = true; saveNextZoom = true; camZoomTarget = null; } });
+  map.on('zoomend', () => {
+    if (userZooming) { userZooming = false; if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); } }
+    saveNextZoom = false;
+  });
 }
 
 function currentStop() { return state.stops.find(s => s.status === 'pending'); }
@@ -1284,8 +1314,8 @@ function onPos(p) {
   // Accuracy-cirkel via GeoJSON source
   const accSrc = map.getSource('gps-acc');
   if (accSrc) accSrc.setData({ type: 'Feature', properties: { acc: lastPos.acc }, geometry: { type: 'Point', coordinates: [lastPos.lon, lastPos.lat] } });
-  // GPS-centrering: één vloeiende easeTo-call
-  mapCenter();
+  // GPS-centrering: eerste fix via easeTo, daarna volgt de camera per frame mee
+  if (!interpRaf) mapCenter();
   if (gpsLost) { gpsLost = false; updateNavCard(); }
 
   const cur = currentStop();
@@ -1337,7 +1367,37 @@ function smoothMarker() {
   }
   gpsMarker.setLngLat([dLon, dLat]);
   drawRouteClipped(dLat, dLon);
+  updateCamera(dLat, dLon);
   interpRaf = requestAnimationFrame(smoothMarker);
+}
+
+/* ---------- VLOEIENDE CAMERA ----------
+   De camera volgt de GPS-marker per frame, in dezelfde animatieloop als
+   smoothMarker. Vroeger startte elke GPS-fix een nieuwe easeTo van 450 ms
+   (versnellen + afremmen) — dat gaf het pulserende, schokkerige gevoel.
+   Nu bewegen kaart, marker en routelijn als één geheel. */
+function updateCamera(lat, lon) {
+  if (!map || trackMode === 'free') { camBearing = null; camLastTs = 0; return; }
+  if (userZooming || Date.now() < camAnimUntil) { camBearing = null; camLastTs = 0; return; }
+  const now = performance.now();
+  const dt = camLastTs ? Math.min((now - camLastTs) / 1000, 0.1) : 1 / 60;
+  camLastTs = now;
+  const target = trackMode === 'heading' ? (lastHeading || 0) : 0;
+  // exponentiële demping: ~90% van de draai in ±0,6 s, onafhankelijk van framerate
+  camBearing = lerpBearing(camBearing == null ? map.getBearing() : camBearing, target, 1 - Math.exp(-dt * 4));
+  const opts = {
+    center: [lon, lat],
+    bearing: camBearing,
+    offset: [0, 0.365 * map.getContainer().clientHeight],
+    duration: 0,
+    essential: true
+  };
+  if (camZoomTarget != null) {
+    const z = map.getZoom();
+    if (Math.abs(z - camZoomTarget) < 0.005) { opts.zoom = camZoomTarget; camZoomTarget = null; }
+    else opts.zoom = z + (camZoomTarget - z) * (1 - Math.exp(-dt * 5));
+  }
+  map.easeTo(opts);
 }
 
 
@@ -1386,7 +1446,11 @@ function doAutoZoom() {
     if (nearestTurnDist < 150) baseZoom = Math.max(baseZoom, 18);
     else if (nearestTurnDist < 400) baseZoom = Math.max(baseZoom, 17);
   }
-  if (Math.abs(map.getZoom() - baseZoom) >= 1) { saveNextZoom = false; map.easeTo({ zoom: baseZoom, duration: 600 }); }
+  const curZ = camZoomTarget != null ? camZoomTarget : map.getZoom();
+  if (Math.abs(curZ - baseZoom) >= 1) {
+    if (interpRaf && trackMode !== 'free') camZoomTarget = baseZoom; // soepel via camera-loop
+    else { saveNextZoom = false; map.easeTo({ zoom: baseZoom, duration: 600 }); }
+  }
 }
 
 /* ---------- VERBLIJFTIJD (DWELL TIME) ---------- */
@@ -1747,6 +1811,16 @@ async function refreshSpeedLimit() {
   limitBusy = false;
 }
 
+function fabZoom(dir) {
+  if (!map) return;
+  const cur = camZoomTarget != null ? camZoomTarget : map.getZoom();
+  const target = Math.max(8, Math.min(20, Math.round(cur) + dir));
+  state.settings.preferredZoom = target; persist();
+  // Tijdens GPS-follow gaat de zoom soepel mee in de camera-loop; de oude
+  // map.zoomIn() werd steeds afgebroken door de recenter-animatie (haperen)
+  if (interpRaf && trackMode !== 'free' && !userZooming) camZoomTarget = target;
+  else { saveNextZoom = false; map.easeTo({ zoom: target, duration: 250 }); }
+}
 function cycleFabCenter() {
   // Vrij → Heading → Noord → Heading → ...
   if (trackMode === 'free') trackMode = 'heading';
@@ -1757,7 +1831,7 @@ function cycleFabCenter() {
     saveNextZoom = false;
     const z = Math.max(map.getZoom(), 16);
     const screenH = map.getContainer().clientHeight;
-    const offsetFrac = (state.settings.gpsOffset != null ? state.settings.gpsOffset : 22) / 100;
+    camAnimUntil = Date.now() + 500; camBearing = null; // camera-loop even laten wachten
     map.easeTo({
       center: [lastPos.lon, lastPos.lat],
       zoom: z,
@@ -1778,10 +1852,15 @@ function updateFabCenter() {
   else { icon.innerHTML = ic('move'); lbl.textContent = 'VRIJ'; btn.classList.add('mode-free'); }
 }
 
+let beepCtx = null;
 function beep() {
   if (!state.settings.sound) return;
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Eén AudioContext hergebruiken: iOS Safari laat maar een handvol
+    // contexts toe, daarna valt het geluid stilletjes weg
+    if (!beepCtx) beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (beepCtx.state === 'suspended') beepCtx.resume();
+    const ctx = beepCtx;
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.connect(g); g.connect(ctx.destination);
     o.frequency.value = 880; g.gain.value = .3;
@@ -2534,5 +2613,5 @@ function loadDriverProfile(bezorgerId) {
   } catch {}
 }
 </script>
-
-<!-
+</body>
+</html>
