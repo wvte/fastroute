@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 29: vloeiende camera (per-frame follow), zachte kaartrotatie, soepel zoomen, panel- en popup-animaties (02-07-2026) -->
+<!-- Build 30: stabiele heading mode — stip vast op scherm, road-snap met hysterese, koers van de weg i.p.v. ruwe GPS (17-07-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -438,7 +438,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 29</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 30</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -576,6 +576,10 @@ function smoothBearing(prev, next, a) {
 let arriveLock = 0;
 // Smooth GPS interpolation
 let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, interpRaf = null;
+let interpCur = null;              // laatst getoonde ruwe positie — volgende fix start hier (geen terugspringen)
+let dispHeading = null;            // gedempte getoonde koers (pijl + camera draaien samen)
+let snapOn = false, snapBlend = 0; // road-snap met hysterese + zachte overgang
+function angDiff(a, b) { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
 // Vloeiende camera: per-frame follow i.p.v. easeTo-pulsen per GPS-fix
 let camBearing = null, camZoomTarget = null, camLastTs = 0, camAnimUntil = 0, userZooming = false;
 function lerpBearing(prev, next, k) {
@@ -1241,7 +1245,9 @@ function onPos(p) {
   const newPos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy };
   // Smooth GPS interpolation: beweeg vloeiend van vorige naar nieuwe positie
   if (lastPos && map) {
-    interpFrom = { lat: lastPos.lat, lon: lastPos.lon };
+    // Start de interpolatie vanaf de positie die NU op het scherm staat,
+    // niet vanaf de vorige fix — dat terugspringen veroorzaakte het schokken.
+    interpFrom = interpCur ? { lat: interpCur.lat, lon: interpCur.lon } : { lat: lastPos.lat, lon: lastPos.lon };
     interpTo = { lat: newPos.lat, lon: newPos.lon };
     interpStart = Date.now();
     interpDur = Math.min(3000, Math.max(500, (p.timestamp - (lastPos._ts || p.timestamp)) * 0.8));
@@ -1308,9 +1314,10 @@ function onPos(p) {
     gpsImg.onerror = () => { el.innerHTML = '<svg viewBox="0 0 24 24" style="width:32px;height:32px"><path fill="#d40511" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>'; };
     gpsMarker = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'map', rotation: 0 })
       .setLngLat([lastPos.lon, lastPos.lat]).addTo(map);
-    interpFrom = null;
+    interpFrom = null; interpCur = null; dispHeading = null;
   }
-  if (lastHeading != null) gpsMarker.setRotation(lastHeading);
+  // Pijl-rotatie gebeurt gedempt in smoothMarker; alleen hier zetten als de loop niet draait
+  if (lastHeading != null && !interpRaf) gpsMarker.setRotation(lastHeading);
   // Accuracy-cirkel via GeoJSON source
   const accSrc = map.getSource('gps-acc');
   if (accSrc) accSrc.setData({ type: 'Feature', properties: { acc: lastPos.acc }, geometry: { type: 'Point', coordinates: [lastPos.lon, lastPos.lat] } });
@@ -1360,11 +1367,37 @@ function smoothMarker() {
     lat = interpTo.lat + vLat * extra;
     lon = interpTo.lon + vLon * extra;
   }
-  let dLat = lat, dLon = lon;
+  // Onthoud de ruwe geïnterpoleerde positie: de volgende GPS-fix start hier verder
+  interpCur = { lat, lon };
+
+  // Snap naar de weg met hysterese (aan < 25 m, uit > 45 m) en een zachte
+  // overgang, zodat de stip nooit heen en weer wipt op de snap-grens.
+  let snap = null;
   if (trackMode !== 'free') {
-    const snap = snapToRoute(lat, lon);
-    if (snap && snap.dist < 30) { dLat = snap.lat; dLon = snap.lon; }
+    snap = snapToRoute(lat, lon);
+    if (snap) {
+      if (snapOn) { if (snap.dist > 45) snapOn = false; }
+      else if (snap.dist < 25) snapOn = true;
+    } else snapOn = false;
+  } else snapOn = false;
+  snapBlend += (snapOn ? 1 : -1) * 0.06;
+  snapBlend = snapBlend < 0 ? 0 : snapBlend > 1 ? 1 : snapBlend;
+  let dLat = lat, dLon = lon, roadBearing = null;
+  if (snap && snapBlend > 0) {
+    dLat = lat + (snap.lat - lat) * snapBlend;
+    dLon = lon + (snap.lon - lon) * snapBlend;
+    if (snapBlend > 0.5 && snap.bearing != null) roadBearing = snap.bearing;
   }
+
+  // Getoonde koers: op de weg gesnapt = de richting van de weg (stabiel),
+  // anders de GPS-koers. Per frame gedempt, dus geen trillende pijl of kaart.
+  let hdgTarget = lastHeading;
+  if (roadBearing != null && (lastHeading == null || angDiff(roadBearing, lastHeading) < 90)) hdgTarget = roadBearing;
+  if (hdgTarget != null) {
+    dispHeading = dispHeading == null ? hdgTarget : lerpBearing(dispHeading, hdgTarget, 0.08);
+    gpsMarker.setRotation(dispHeading);
+  }
+
   gpsMarker.setLngLat([dLon, dLat]);
   drawRouteClipped(dLat, dLon);
   updateCamera(dLat, dLon);
@@ -1382,7 +1415,7 @@ function updateCamera(lat, lon) {
   const now = performance.now();
   const dt = camLastTs ? Math.min((now - camLastTs) / 1000, 0.1) : 1 / 60;
   camLastTs = now;
-  const target = trackMode === 'heading' ? (lastHeading || 0) : 0;
+  const target = trackMode === 'heading' ? (dispHeading != null ? dispHeading : (lastHeading || 0)) : 0;
   // exponentiële demping: ~90% van de draai in ±0,6 s, onafhankelijk van framerate
   camBearing = lerpBearing(camBearing == null ? map.getBearing() : camBearing, target, 1 - Math.exp(-dt * 4));
   const opts = {
@@ -1411,7 +1444,7 @@ function snapToRoute(lat, lon) {
   const c = g.coordinates;
   const kx = Math.cos(lat * Math.PI / 180);
   const px = lon * kx, py = lat;
-  let bestLon = 0, bestLat = 0, bestD2 = Infinity;
+  let bestLon = 0, bestLat = 0, bestD2 = Infinity, bestI = 0;
   for (let i = 0; i < c.length - 1; i++) {
     const ax = c[i][0] * kx, ay = c[i][1], bx = c[i + 1][0] * kx, by = c[i + 1][1];
     const dx = bx - ax, dy = by - ay;
@@ -1421,9 +1454,13 @@ function snapToRoute(lat, lon) {
     const sx = ax + dx * t, sy = ay + dy * t;
     const ex = px - sx, ey = py - sy;
     const d2 = ex * ex + ey * ey;
-    if (d2 < bestD2) { bestD2 = d2; bestLon = sx / kx; bestLat = sy; }
+    if (d2 < bestD2) { bestD2 = d2; bestLon = sx / kx; bestLat = sy; bestI = i; }
   }
-  return { lat: bestLat, lon: bestLon, dist: Math.sqrt(bestD2) * 111320 };
+  // Richting van het weg-segment: stabiele koers voor kaartrotatie (rondt af op de weg)
+  const bearing = calcBearing(
+    { lat: c[bestI][1], lon: c[bestI][0] },
+    { lat: c[bestI + 1][1], lon: c[bestI + 1][0] });
+  return { lat: bestLat, lon: bestLon, dist: Math.sqrt(bestD2) * 111320, bearing };
 }
 
 /* ---------- AUTO-ZOOM BIJ BOCHTEN ---------- */
