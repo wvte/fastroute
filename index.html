@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 30: stabiele heading mode — stip vast op scherm, road-snap met hysterese, koers van de weg i.p.v. ruwe GPS (17-07-2026) -->
+<!-- Build 31: map matching zoals echte nav-apps — stip rijdt over de routelijn (voortgangsmodel), Kalman-filter op GPS-fixes (17-07-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -438,7 +438,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 30</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 31</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -578,8 +578,21 @@ let arriveLock = 0;
 let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, interpRaf = null;
 let interpCur = null;              // laatst getoonde ruwe positie — volgende fix start hier (geen terugspringen)
 let dispHeading = null;            // gedempte getoonde koers (pijl + camera draaien samen)
-let snapOn = false, snapBlend = 0; // road-snap met hysterese + zachte overgang
+let snapBlend = 0, smLastTs = 0;   // zachte overgang route-lock aan/uit + frame-tijd
 function angDiff(a, b) { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
+
+/* Kalman-filter op ruwe GPS-fixes (klassieke gps-smoothing): elke fix wordt
+   gewogen op zijn nauwkeurigheid, slechte fixes tellen nauwelijks mee. */
+let kfLat = null, kfLon = null, kfVar = -1, kfTs = 0;
+function kalmanPos(lat, lon, acc, ts) {
+  const a = Math.max(acc || 10, 3);
+  if (kfVar < 0 || ts - kfTs > 15000) { kfLat = lat; kfLon = lon; kfVar = a * a; kfTs = ts; return { lat, lon }; }
+  const dt = Math.max((ts - kfTs) / 1000, 0.001); kfTs = ts;
+  kfVar += dt * 16; // procesruis (4 m/s)²: een bus kan flink van koers veranderen
+  const K = kfVar / (kfVar + a * a);
+  kfLat += K * (lat - kfLat); kfLon += K * (lon - kfLon); kfVar *= (1 - K);
+  return { lat: kfLat, lon: kfLon };
+}
 // Vloeiende camera: per-frame follow i.p.v. easeTo-pulsen per GPS-fix
 let camBearing = null, camZoomTarget = null, camLastTs = 0, camAnimUntil = 0, userZooming = false;
 function lerpBearing(prev, next, k) {
@@ -1242,7 +1255,9 @@ let navExpanded = false;
 let limitVal = null, limitPos = null, limitTs = 0, limitBusy = false;
 
 function onPos(p) {
-  const newPos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy };
+  // Kalman-filter over de ruwe fix: onnauwkeurige pings wegen nauwelijks mee
+  const kf = kalmanPos(p.coords.latitude, p.coords.longitude, p.coords.accuracy, p.timestamp || Date.now());
+  const newPos = { lat: kf.lat, lon: kf.lon, acc: p.coords.accuracy };
   // Smooth GPS interpolation: beweeg vloeiend van vorige naar nieuwe positie
   if (lastPos && map) {
     // Start de interpolatie vanaf de positie die NU op het scherm staat,
@@ -1370,31 +1385,41 @@ function smoothMarker() {
   // Onthoud de ruwe geïnterpoleerde positie: de volgende GPS-fix start hier verder
   interpCur = { lat, lon };
 
-  // Snap naar de weg met hysterese (aan < 25 m, uit > 45 m) en een zachte
-  // overgang, zodat de stip nooit heen en weer wipt op de snap-grens.
-  let snap = null;
-  if (trackMode !== 'free') {
-    snap = snapToRoute(lat, lon);
-    if (snap) {
-      if (snapOn) { if (snap.dist > 45) snapOn = false; }
-      else if (snap.dist < 25) snapOn = true;
-    } else snapOn = false;
-  } else snapOn = false;
-  snapBlend += (snapOn ? 1 : -1) * 0.06;
-  snapBlend = snapBlend < 0 ? 0 : snapBlend > 1 ? 1 : snapBlend;
+  // Frame-tijd (voor framerate-onafhankelijke demping en voortgang)
+  const nowM = performance.now();
+  const dtf = smLastTs ? Math.min((nowM - smLastTs) / 1000, 0.1) : 1 / 60;
+  smLastTs = nowM;
+
+  // MAP MATCHING zoals echte navigatie-apps: de stip rijdt over de routelijn
+  // op basis van snelheid; de GPS stuurt alleen de voortgang zachtjes bij.
+  // Aan bij < 35 m van de route, pas uit na > 55 m gedurende 3 s (hysterese).
   let dLat = lat, dLon = lon, roadBearing = null;
-  if (snap && snapBlend > 0) {
-    dLat = lat + (snap.lat - lat) * snapBlend;
-    dLon = lon + (snap.lon - lon) * snapBlend;
-    if (snapBlend > 0.5 && snap.bearing != null) roadBearing = snap.bearing;
+  const proj = trackMode !== 'free' ? projectOnRoute(lat, lon, matchOn ? routeProg : null) : null;
+  if (proj) {
+    if (matchOn) {
+      if (proj.dist > 55) { offRouteT += dtf; if (offRouteT > 3) { matchOn = false; routeProg = null; } }
+      else offRouteT = 0;
+    } else if (proj.dist < 35) { matchOn = true; offRouteT = 0; routeProg = proj.prog; }
+  } else { matchOn = false; routeProg = null; }
+  snapBlend += (matchOn ? 1 : -1) * dtf * 2.5;
+  snapBlend = snapBlend < 0 ? 0 : snapBlend > 1 ? 1 : snapBlend;
+  if (matchOn && routeProg != null && proj) {
+    routeProg += (spdEma || 0) * dtf;                              // dead reckoning: rijd mee op snelheid
+    routeProg += (proj.prog - routeProg) * (1 - Math.exp(-dtf * 1.2)); // zachte GPS-correctie (ook achteruit)
+    if (routeProg < 0) routeProg = 0; else if (routeProg > routeTotal) routeProg = routeTotal;
+    const pt = pointAtProgress(routeProg);
+    if (pt) {
+      dLat = lat + (pt.lat - lat) * snapBlend;
+      dLon = lon + (pt.lon - lon) * snapBlend;
+      if (snapBlend > 0.5) roadBearing = pt.bearing;
+    }
   }
 
-  // Getoonde koers: op de weg gesnapt = de richting van de weg (stabiel),
-  // anders de GPS-koers. Per frame gedempt, dus geen trillende pijl of kaart.
-  let hdgTarget = lastHeading;
-  if (roadBearing != null && (lastHeading == null || angDiff(roadBearing, lastHeading) < 90)) hdgTarget = roadBearing;
+  // Getoonde koers: op de route = de richting van de routelijn (stabiel),
+  // daarbuiten de GPS-koers. Per frame gedempt: geen trillende pijl of kaart.
+  const hdgTarget = roadBearing != null ? roadBearing : lastHeading;
   if (hdgTarget != null) {
-    dispHeading = dispHeading == null ? hdgTarget : lerpBearing(dispHeading, hdgTarget, 0.08);
+    dispHeading = dispHeading == null ? hdgTarget : lerpBearing(dispHeading, hdgTarget, 1 - Math.exp(-dtf * 5));
     gpsMarker.setRotation(dispHeading);
   }
 
@@ -1461,6 +1486,83 @@ function snapToRoute(lat, lon) {
     { lat: c[bestI][1], lon: c[bestI][0] },
     { lat: c[bestI + 1][1], lon: c[bestI + 1][0] });
   return { lat: bestLat, lon: bestLon, dist: Math.sqrt(bestD2) * 111320, bearing };
+}
+
+/* ---------- MAP MATCHING: POSITIE LANGS DE ROUTE ----------
+   Zoals echte navigatie-apps (Google Maps, Mapbox): de stip beweegt ALLEEN
+   langs de routelijn. Een GPS-fix bepaalt de VOORTGANG (afstand langs de
+   route), nooit de getekende positie zelf. Zijwaartse GPS-ruis verdwijnt
+   daardoor volledig; de stip kan alleen nog vloeiend over de lijn schuiven. */
+let routeCum = null, routeCumGeom = null, routeTotal = 0;
+let routeProg = null, matchOn = false, offRouteT = 0;
+
+function buildRouteCum() {
+  const g = state.routeGeom;
+  if (!g || !g.coordinates || g.coordinates.length < 2) { routeCum = null; routeCumGeom = null; return false; }
+  if (routeCumGeom === g) return true;
+  const c = g.coordinates;
+  routeCum = new Float64Array(c.length);
+  let tot = 0;
+  for (let i = 1; i < c.length; i++) {
+    tot += hav({ lat: c[i - 1][1], lon: c[i - 1][0] }, { lat: c[i][1], lon: c[i][0] });
+    routeCum[i] = tot;
+  }
+  routeTotal = tot;
+  routeCumGeom = g;
+  routeProg = null; // nieuwe route: voortgang opnieuw bepalen
+  return true;
+}
+
+function projectOnRoute(lat, lon, nearProg) {
+  if (!buildRouteCum()) return null;
+  const c = state.routeGeom.coordinates;
+  const kx = Math.cos(lat * Math.PI / 180);
+  const px = lon * kx, py = lat;
+  const scan = (lo, hi) => {
+    let best = null;
+    for (let i = lo; i < hi; i++) {
+      const ax = c[i][0] * kx, ay = c[i][1], bx = c[i + 1][0] * kx, by = c[i + 1][1];
+      const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+      let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const sx = ax + dx * t, sy = ay + dy * t, ex = px - sx, ey = py - sy, d2 = ex * ex + ey * ey;
+      if (!best || d2 < best.d2) best = { d2, i, t, lon: sx / kx, lat: sy };
+    }
+    return best;
+  };
+  let best = null;
+  if (nearProg != null) {
+    // Zoek eerst dicht bij de huidige voortgang: voorkomt snappen naar een
+    // verkeerd (parallel of terugkomend) stuk van dezelfde route
+    let lo = 0; while (lo < routeCum.length - 2 && routeCum[lo + 1] < nearProg - 200) lo++;
+    let hi = lo; while (hi < routeCum.length - 1 && routeCum[hi] < nearProg + 500) hi++;
+    best = scan(lo, hi);
+    if (best && Math.sqrt(best.d2) * 111320 > 35) best = null;
+  }
+  if (!best) best = scan(0, c.length - 1);
+  if (!best) return null;
+  const segLen = routeCum[best.i + 1] - routeCum[best.i];
+  return {
+    lat: best.lat, lon: best.lon,
+    dist: Math.sqrt(best.d2) * 111320,
+    prog: routeCum[best.i] + segLen * best.t,
+    bearing: calcBearing({ lat: c[best.i][1], lon: c[best.i][0] }, { lat: c[best.i + 1][1], lon: c[best.i + 1][0] })
+  };
+}
+
+function pointAtProgress(p) {
+  if (!routeCum) return null;
+  const c = state.routeGeom.coordinates;
+  p = p < 0 ? 0 : p > routeTotal ? routeTotal : p;
+  let lo = 0, hi = routeCum.length - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (routeCum[m] <= p) lo = m; else hi = m; }
+  const segLen = routeCum[lo + 1] - routeCum[lo] || 1;
+  const t = (p - routeCum[lo]) / segLen;
+  return {
+    lat: c[lo][1] + (c[lo + 1][1] - c[lo][1]) * t,
+    lon: c[lo][0] + (c[lo + 1][0] - c[lo][0]) * t,
+    bearing: calcBearing({ lat: c[lo][1], lon: c[lo][0] }, { lat: c[lo + 1][1], lon: c[lo + 1][0] })
+  };
 }
 
 /* ---------- AUTO-ZOOM BIJ BOCHTEN ---------- */
