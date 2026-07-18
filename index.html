@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 31: map matching zoals echte nav-apps — stip rijdt over de routelijn (voortgangsmodel), Kalman-filter op GPS-fixes (17-07-2026) -->
+<!-- Build 32: vaste scherm-pijl — GPS-pijl is in volg-modi een schermelement dat nooit beweegt, de kaart schuift eronderdoor (17-07-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -438,7 +438,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 31</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 32</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1426,7 +1426,41 @@ function smoothMarker() {
   gpsMarker.setLngLat([dLon, dLat]);
   drawRouteClipped(dLat, dLon);
   updateCamera(dLat, dLon);
+  updateFixedPuck();
   interpRaf = requestAnimationFrame(smoothMarker);
+}
+
+/* ---------- VASTE PIJL OP HET SCHERM ----------
+   In volg-modi (heading/noord) is de GPS-pijl een schermelement dat letterlijk
+   NOOIT beweegt: hij staat vastgespijkerd op een vast punt van het scherm en
+   alleen de kaart schuift eronderdoor. Zo doen echte nav-apps het ook. De
+   kaart-marker wordt in die modi verborgen (die tekent per frame opnieuw met
+   pixel-afronding en loopt daardoor zichtbaar te wiebelen t.o.v. de camera). */
+let fixedPuck = null;
+function ensureFixedPuck() {
+  if (fixedPuck || !map) return;
+  fixedPuck = document.createElement('div');
+  fixedPuck.id = 'fixedPuck';
+  fixedPuck.style.cssText = 'position:absolute;left:50%;top:50%;width:38px;height:38px;margin:-19px 0 0 -19px;z-index:5;pointer-events:none;display:none;will-change:transform;filter:drop-shadow(0 0 4px rgba(21,101,216,.6));';
+  const src = gpsMarker && gpsMarker.getElement().innerHTML;
+  fixedPuck.innerHTML = src || '<img src="gps-icon.png" style="width:38px;height:38px;display:block">';
+  map.getContainer().appendChild(fixedPuck);
+}
+function updateFixedPuck() {
+  ensureFixedPuck();
+  if (!fixedPuck) return;
+  const follow = trackMode !== 'free' && !userZooming;
+  if (!follow) {
+    fixedPuck.style.display = 'none';
+    if (gpsMarker) gpsMarker.getElement().style.visibility = '';
+    return;
+  }
+  // Zelfde vaste punt als de camera-offset; rotatie = koers t.o.v. het scherm
+  const h = map.getContainer().clientHeight;
+  const ang = (dispHeading != null ? dispHeading : 0) - map.getBearing();
+  fixedPuck.style.display = 'block';
+  fixedPuck.style.transform = 'translateY(' + (0.365 * h).toFixed(1) + 'px) rotate(' + ang.toFixed(1) + 'deg)';
+  if (gpsMarker) gpsMarker.getElement().style.visibility = 'hidden';
 }
 
 /* ---------- VLOEIENDE CAMERA ----------
