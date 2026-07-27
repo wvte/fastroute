@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 32: vaste scherm-pijl — GPS-pijl is in volg-modi een schermelement dat nooit beweegt, de kaart schuift eronderdoor (17-07-2026) -->
+<!-- Build 33: vrij rondkijken via elke gebruikersinteractie (movestart i.p.v. alleen dragstart), eigen rustige attributie-knopje i.p.v. auto-uitrollende OpenFreeMap-control (27-07-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -155,6 +155,12 @@ input.txt:focus,select.txt:focus{outline:none;border-color:var(--blue);}
 .mk.current{background:var(--accent);color:#10141a;animation:pulse 1.2s infinite;font-size:16px;}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,204,0,.7);}70%{box-shadow:0 0 0 16px rgba(255,204,0,0);}100%{box-shadow:0 0 0 0 rgba(255,204,0,0);}}
 .mk-gps{width:38px;height:38px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 4px rgba(21,101,216,.6));}
+/* Eigen attributie-knopje: staat standaard dicht, geen auto-animatie bij laden */
+.rf-attrib{position:relative;margin:0 6px 6px 0;}
+.rf-attrib-btn{width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.75);color:#333;font:italic 700 13px/20px Georgia,serif;text-align:center;cursor:pointer;padding:0;}
+.rf-attrib-panel{display:none;position:absolute;right:0;bottom:26px;background:#fff;color:#333;font-size:11px;line-height:1.4;white-space:nowrap;padding:5px 9px;border-radius:6px;box-shadow:0 1px 6px rgba(0,0,0,.3);}
+.rf-attrib-panel a{color:#1565d8;}
+.rf-attrib.open .rf-attrib-panel{display:block;}
 .hnr-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;}
 .mk.ooo{border:3px solid var(--red);}
 .mk.steeg{border:3px solid var(--green);}
@@ -438,7 +444,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 32</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 33</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1099,7 +1105,22 @@ function initMap() {
     pitch: 0,
     attributionControl: false
   });
-  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+  // Eigen minimale attributie i.p.v. maplibregl.AttributionControl: die
+  // standaard-control klapt bij het laden zichtbaar open/dicht (compact-
+  // animatie) voordat hij inklapt. Onze versie staat vanaf frame 1 dicht en
+  // opent alleen na een echte tik, verplichte OSM/OpenFreeMap-vermelding
+  // blijft gewoon bereikbaar achter het i-tje.
+  map.addControl({
+    onAdd() {
+      const el = document.createElement('div');
+      el.className = 'maplibregl-ctrl rf-attrib';
+      el.innerHTML = '<button type="button" class="rf-attrib-btn" aria-label="Kaartinformatie">i</button>' +
+        '<div class="rf-attrib-panel">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-auteurs · <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a></div>';
+      el.querySelector('.rf-attrib-btn').addEventListener('click', () => el.classList.toggle('open'));
+      return el;
+    },
+    onRemove() {}
+  }, 'bottom-right');
   map.on('load', () => {
     // Route-lijn als GeoJSON layer
     map.addSource('route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
@@ -1115,7 +1136,21 @@ function initMap() {
     const lons = withPos.map(s => s.lon), lats = withPos.map(s => s.lat);
     map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 60, maxZoom: 16 });
   }
-  map.on('dragstart', () => { if (trackMode !== 'free') { trackMode = 'free'; updateFabCenter(); } });
+  // Elke ECHTE gebruikersinteractie (slepen, roteren met 2 vingers, kantelen)
+  // schakelt meteen naar vrije modus. 'movestart' vangt ze allemaal in één
+  // klap (met e.originalEvent = door de gebruiker, niet door onze eigen
+  // camera-loop) — voorheen alleen 'dragstart', waardoor 2-vinger-roteren
+  // niets deed en de camera-loop de kaart per frame terugdraaide: voelde
+  // vast/zwaar aan. camBearing wordt meteen losgelaten zodat er niets meer
+  // terugveert.
+  map.on('movestart', e => {
+    if (e && e.originalEvent && trackMode !== 'free') {
+      trackMode = 'free';
+      camBearing = null; camLastTs = 0; camZoomTarget = null;
+      updateFabCenter();
+      updateFixedPuck();
+    }
+  });
   // Alleen échte gebruikersgebaren (pinch) tellen als voorkeurszoom;
   // camera- en autozoom-animaties overschrijven je voorkeur niet meer
   map.on('zoomstart', e => { if (e && e.originalEvent) { userZooming = true; saveNextZoom = true; camZoomTarget = null; } });
