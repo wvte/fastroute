@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 34: einde-rit overzicht verticaal gecentreerd, PDF-parser herkent tussengevoegde .1/.2-pakketnummers, snelheidsgrafiek (tik op live snelheid) met scrub en -5 km/u correctie (04-08-2026) -->
+<!-- Build 35: warme "quiet luxury" restyle (geïnspireerd op nomadigital.vercel.app, DHL rood/geel behouden), instellingen + zoomniveau slaan nu écht per rijder automatisch op, ongedaan-maken toast bij afronden/overslaan van een stop, snelheidsgrafiek zonder onnodig onderschrift (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -18,24 +18,32 @@
 :root{
   /* DHL kleuren — rood is de hoofdkleur (heet --blue om legacy redenen), geel is accent */
   --blue:#d40511; --blue-dark:#b00310; --accent:#ffcc00; --accent-dark:#e0ac00;
-  --green:#1e9e4a; --red:#c2261c; --grey:#8a93a0; --dark:#1c2733;
-  --bg:#f2f3f6; --card:#ffffff; --text:#161a20; --text-soft:#5b6470; --border:#e7eaf0;
-  --radius:18px; --radius-lg:24px; --radius-sm:12px;
-  --shadow-sm:0 1px 2px rgba(16,20,26,.06),0 2px 6px rgba(16,20,26,.06);
-  --shadow-md:0 6px 20px rgba(16,20,26,.12);
-  --shadow-lg:0 12px 34px rgba(16,20,26,.20);
+  --green:#1e9e4a; --red:#c2261c; --grey:#948b7e; --dark:#1c2733;
+  /* Warme, ingetogen basis (geïnspireerd op nomadigital.vercel.app) i.p.v. het
+     koele grijsblauw van eerst — DHL rood/geel blijven de enige felle kleuren */
+  --gold:#c9a96e; --gold-dark:#a98950;
+  --bg:#f7f3ec; --card:#fffdfa; --text:#211c17; --text-soft:#756a5c; --border:#e9e0d2;
+  --radius:14px; --radius-lg:20px; --radius-sm:10px;
+  --shadow-sm:0 1px 2px rgba(33,22,10,.05),0 2px 6px rgba(33,22,10,.05);
+  --shadow-md:0 6px 18px rgba(33,22,10,.10);
+  --shadow-lg:0 12px 30px rgba(33,22,10,.16);
   --font:-apple-system,'SF Pro',Segoe UI,Roboto,system-ui,sans-serif;
 }
+/* Kleine uppercase, getrackte "eyebrow"-labeltjes — het premium accent-detail
+   van de referentiestijl, in de gedempte goudtint zodat DHL rood/geel het
+   enige echte signaalkleur blijven. */
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:2.2px;text-transform:uppercase;color:var(--gold-dark);}
+body.dark .eyebrow{color:var(--gold);}
 /* Dark mode */
-body.dark{--bg:#0d1118;--card:#171f2e;--text:#e8edf5;--text-soft:#97a3b6;--border:#2a3550;}
+body.dark{--bg:#171310;--card:#211b16;--text:#f1ece3;--text-soft:#a89d8d;--border:#352c22;}
 body.dark header.bar{background:linear-gradient(180deg,#9c0009,#7e0007);}
 body.dark .ride-item,body.dark .card{background:var(--card);color:var(--text);}
-body.dark #rideSearch{background:var(--card);color:var(--text);border-color:#2a3a55;}
+body.dark #rideSearch{background:var(--card);color:var(--text);border-color:var(--border);}
 body.dark .panel .sheet,body.dark #arrivePop,body.dark #notesPop{background:var(--card);color:var(--text);}
-body.dark .stop-row,body.dark .sheet h2,body.dark .setrow{border-color:#2a3a55;}
-body.dark .stop-row.current{background:#1f2d1a;}
-body.dark input.txt,body.dark #addNote,body.dark #addPC,body.dark #addNR,body.dark #depotAddr{background:#0f1520;color:var(--text);border-color:#2a3a55;}
-body.dark #arrivePop .apPkg{background:#0f1520;}
+body.dark .stop-row,body.dark .sheet h2,body.dark .setrow{border-color:var(--border);}
+body.dark .stop-row.current{background:#242b1a;}
+body.dark input.txt,body.dark #addNote,body.dark #addPC,body.dark #addNR,body.dark #depotAddr{background:#14100c;color:var(--text);border-color:var(--border);}
+body.dark #arrivePop .apPkg{background:#14100c;}
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;height:100%;font-family:var(--font);background:var(--bg);color:var(--text);overscroll-behavior:none;-webkit-font-smoothing:antialiased;letter-spacing:-.01em;}
 body{height:100dvh;overflow:hidden;} /* geen dode witte balk onder de knoppen op iOS */
@@ -43,7 +51,7 @@ body{height:100dvh;overflow:hidden;} /* geen dode witte balk onder de knoppen op
 .screen.active{display:flex;}
 header.bar{background:linear-gradient(180deg,#e10613,#c30410);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;font-size:21px;font-weight:800;display:flex;align-items:center;gap:11px;flex:0 0 auto;border-bottom:3px solid var(--accent);box-shadow:0 2px 10px rgba(16,20,26,.12);letter-spacing:-.02em;}
 header.bar .sub{font-size:13px;font-weight:500;opacity:.85;display:block;}
-.btn{border:none;border-radius:14px;font-size:19px;font-weight:700;padding:16px 20px;cursor:pointer;color:#fff;background:var(--blue);width:100%;box-shadow:var(--shadow-sm);transition:transform .08s ease,filter .12s ease,box-shadow .12s ease;display:inline-flex;align-items:center;justify-content:center;gap:9px;letter-spacing:-.01em;}
+.btn{border:none;border-radius:var(--radius-sm);font-size:19px;font-weight:700;padding:16px 20px;cursor:pointer;color:#fff;background:var(--blue);width:100%;box-shadow:var(--shadow-sm);transition:transform .08s ease,filter .12s ease,box-shadow .12s ease;display:inline-flex;align-items:center;justify-content:center;gap:9px;letter-spacing:-.01em;}
 .btn:active{transform:scale(.97);filter:brightness(.96);}
 .btn.orange{background:var(--accent);color:#1a1d23;}
 .btn.green{background:var(--green);}
@@ -60,7 +68,7 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 #drop b{font-size:42px;display:block;margin-bottom:8px;}
 #drop small{font-weight:500;}
 /* ritlijst */
-#rideSearch{width:100%;font-size:18px;padding:14px 16px;border-radius:14px;border:1.5px solid var(--border);background:var(--card);color:var(--text);margin-bottom:14px;box-shadow:var(--shadow-sm);}
+#rideSearch{width:100%;font-size:18px;padding:14px 16px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--card);color:var(--text);margin-bottom:14px;box-shadow:var(--shadow-sm);}
 #rideSearch:focus{outline:none;border-color:var(--blue);}
 .ride-item{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:11px;box-shadow:var(--shadow-sm);cursor:pointer;border-left:6px solid var(--blue);transition:transform .08s ease,box-shadow .12s ease;}
 .ride-item:active{transform:scale(.985);box-shadow:var(--shadow-md);}
@@ -109,7 +117,7 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 .panel.open{display:flex;flex-direction:column;justify-content:flex-end;}
 .panel.open{animation:fadeIn .18s ease;}
 @keyframes fadeIn{from{background:rgba(0,0,0,0);}to{background:rgba(0,0,0,.45);}}
-.panel .sheet{position:relative;background:var(--card);border-radius:var(--radius-lg) var(--radius-lg) 0 0;max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -8px 30px rgba(0,0,0,.25);animation:slideUp .24s cubic-bezier(.22,.61,.36,1);}
+.panel .sheet{position:relative;background:var(--card);border-radius:var(--radius-lg) var(--radius-lg) 0 0;max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -8px 26px rgba(33,22,10,.22);animation:slideUp .24s cubic-bezier(.22,.61,.36,1);}
 @keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
 /* Zacht sluiten: paneel glijdt omlaag en de achtergrond vervaagt */
 .panel.closing{animation:fadeOut .19s ease forwards;}
@@ -133,7 +141,7 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 .stop-row .info{flex:1;min-width:0;}
 .stop-row .a1{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .stop-row.done .a1, .stop-row.skipped .a1{text-decoration:line-through;color:#7c8590;}
-.stop-row .a2{font-size:13px;color:#5b6470;}
+.stop-row .a2{font-size:13px;color:var(--text-soft);}
 .stop-row .eta{font-size:15px;font-weight:700;color:var(--blue);white-space:nowrap;}
 .menu-btns{display:flex;flex-direction:column;gap:10px;padding:6px 16px 16px;}
 .setrow{display:flex;justify-content:space-between;align-items:center;padding:15px 4px;border-bottom:1px solid var(--border);font-size:17px;}
@@ -183,15 +191,21 @@ input.txt:focus,select.txt:focus{outline:none;border-color:var(--blue);}
 #notesPop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:860;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 24px;text-align:center;min-width:240px;max-width:88vw;border:4px solid #ff6d00;display:none;}
 #notesPop .nIcon{font-size:44px;line-height:1;}
 #notesPop .nTitle{font-size:19px;font-weight:800;margin:6px 0 4px;}
-#notesPop .nText{font-size:15px;color:#5b6470;margin-bottom:12px;}
+#notesPop .nText{font-size:15px;color:var(--text-soft);margin-bottom:12px;}
 #notesPop .nX{width:100%;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:16px;font-weight:700;padding:10px;cursor:pointer;position:relative;overflow:hidden;}
 /* Notitie-badge op stop-rij */
 .note-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff6d00;margin-left:5px;vertical-align:middle;}
 #speedBox{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);z-index:500;display:none;flex-direction:column;align-items:center;gap:6px;}
 #limitSign{display:none;width:62px;height:62px;border-radius:50%;background:#fff;border:7px solid #d63b2f;color:#10141a;font-size:26px;font-weight:900;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);}
+/* Ongedaan-maken toast: verschijnt kort na afronden/overslaan van een stop,
+   zodat een misklik tijdens het rijden zo weer recht te zetten is. */
+#undoToast{display:none;position:absolute;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom) + 78px);z-index:900;background:#211c17;color:#fff;border-radius:var(--radius-sm);padding:12px 8px 12px 16px;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.3);animation:popIn .22s cubic-bezier(.34,1.56,.64,1);}
+#undoToast.show{display:flex;}
+#undoToast span{font-size:14px;font-weight:600;flex:1;min-width:0;}
+#undoToast button{background:rgba(255,255,255,.16);color:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:800;padding:9px 12px;cursor:pointer;white-space:nowrap;}
 #speedNow{background:#fff;border-radius:14px;padding:6px 12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:62px;cursor:pointer;}
 #speedNow .v{font-size:26px;font-weight:900;line-height:1;}
-#speedNow .u{font-size:11px;color:#5b6470;font-weight:700;}
+#speedNow .u{font-size:11px;color:var(--text-soft);font-weight:700;}
 #speedNow.over .v{color:var(--red);}
 /* Snelheidsgrafiek-paneel */
 #spdGraphReadout{text-align:center;font-size:16px;font-weight:800;color:var(--text);min-height:22px;margin-bottom:8px;}
@@ -282,12 +296,12 @@ body.dark .addsr:active{background:#0f1520;}
   <header class="bar"><img class="logo" src="icon.png" onerror="this.style.display='none'">RouteFast Planner<span class="sub"></span><button id="adminBtn" onclick="openAdminLogin()"><svg class="lic" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Admin</button></header>
   <div class="content">
     <div id="drop" onclick="document.getElementById('file').click()">
-      <span id="dropArt"><svg viewBox="0 0 512 512"><ellipse cx="172" cy="448" rx="52" ry="13" fill="#E0AC00"/><ellipse cx="392" cy="294" rx="34" ry="9" fill="#E0AC00"/><path d="M 200 430 C 300 430 250 330 330 320 C 410 310 350 300 388 286" stroke="#D40511" stroke-width="22" fill="none" stroke-linecap="round"/><path d="M 172 250 c -50 0 -84 38 -84 82 c 0 56 64 84 84 112 c 20 -28 84 -56 84 -112 c 0 -44 -34 -82 -84 -82 z" fill="#D40511"/><circle cx="172" cy="330" r="32" fill="#FFCC00"/><path d="M 392 188 c -28 0 -47 21 -47 46 c 0 31 36 47 47 63 c 11 -16 47 -32 47 -63 c 0 -25 -19 -46 -47 -46 z" fill="#D40511"/><circle cx="392" cy="232" r="17" fill="#FFCC00"/></svg></span>Tik hier om je PDF-planning te kiezen<br><small style="font-size:14px;color:#5b6470">DHL laadlijst met één of meer ritten</small>
+      <span id="dropArt"><svg viewBox="0 0 512 512"><ellipse cx="172" cy="448" rx="52" ry="13" fill="#E0AC00"/><ellipse cx="392" cy="294" rx="34" ry="9" fill="#E0AC00"/><path d="M 200 430 C 300 430 250 330 330 320 C 410 310 350 300 388 286" stroke="#D40511" stroke-width="22" fill="none" stroke-linecap="round"/><path d="M 172 250 c -50 0 -84 38 -84 82 c 0 56 64 84 84 112 c 20 -28 84 -56 84 -112 c 0 -44 -34 -82 -84 -82 z" fill="#D40511"/><circle cx="172" cy="330" r="32" fill="#FFCC00"/><path d="M 392 188 c -28 0 -47 21 -47 46 c 0 31 36 47 47 63 c 11 -16 47 -32 47 -63 c 0 -25 -19 -46 -47 -46 z" fill="#D40511"/><circle cx="392" cy="232" r="17" fill="#FFCC00"/></svg></span>Tik hier om je PDF-planning te kiezen<br><small style="font-size:14px;color:var(--text-soft)">DHL laadlijst met één of meer ritten</small>
     </div>
     <input type="file" id="file" accept="application/pdf" style="display:none">
     <div id="resumeCard" class="card" style="display:none">
       <div style="font-size:17px;font-weight:700;margin-bottom:10px">Vorige rit verdergaan?</div>
-      <div id="resumeInfo" style="font-size:15px;color:#5b6470;margin-bottom:12px"></div>
+      <div id="resumeInfo" style="font-size:15px;color:var(--text-soft);margin-bottom:12px"></div>
       <button class="btn green" onclick="resumeRide()"><svg class="lic" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>Verdergaan</button>
     </div>
   </div>
@@ -347,6 +361,7 @@ body.dark .addsr:active{background:#0f1520;}
     <button class="nX" onclick="moreInfoNotesPop()" style="background:#ff6d00;margin-bottom:8px">Meer informatie</button>
     <button class="nX" id="notesBegrepen" onclick="hideNotesPop()">Begrepen<div id="notesProgBar" style="position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,.25);pointer-events:none;transition:width linear;width:100%"></div></button>
   </div>
+  <div id="undoToast"><span id="undoToastMsg"></span><button onclick="undoLastAction()">Ongedaan maken</button></div>
   <div id="map"></div>
   <button class="fab" id="fabZoomIn" onclick="fabZoom(1)">＋</button>
   <button class="fab" id="fabZoomOut" onclick="fabZoom(-1)">－</button>
@@ -401,7 +416,7 @@ body.dark .addsr:active{background:#0f1520;}
   <div class="sheet">
     <h2><span id="notesEditTitle">Meldingen adres</span><button class="x" onclick="closePanel('panel-notes')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="body" id="notesEditBody">
-      <div style="font-size:15px;color:#5b6470;margin-bottom:10px">Meldingen worden opgeslagen per adres en getoond bij aankomst.</div>
+      <div style="font-size:15px;color:var(--text-soft);margin-bottom:10px">Meldingen worden opgeslagen per adres en getoond bij aankomst.</div>
       <div id="notesList"></div>
       <div style="margin-top:14px">
         <select id="notesType" class="txt" style="margin-bottom:8px">
@@ -426,7 +441,7 @@ body.dark .addsr:active{background:#0f1520;}
     <h2 id="settingsTitle">Instellingen<button class="x" id="settingsCloseBtn" onclick="closePanel('panel-settings')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
     <div class="body">
       <div id="setupBanner" style="display:none;background:#e8f5e9;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px;color:#2e7d32">Stel je voorkeuren in — je kunt dit later altijd aanpassen via het instellingenscherm.</div>
-      <div class="setrow"><span>Chauffeur</span><span id="driverDisplay" style="font-size:14px;color:#5b6470">—</span></div>
+      <div class="setrow"><span>Chauffeur</span><span id="driverDisplay" style="font-size:14px;color:var(--text-soft)">—</span></div>
       <div class="setrow"><span>Donkere modus</span><button class="switch" id="swDark" onclick="toggleDark()"></button></div>
       <div class="setrow"><span>Aankomstradius: <b id="radVal"></b> m</span><input type="range" min="15" max="75" step="5" id="radius" oninput="setRadius(this.value)"></div>
       <div class="setrow"><span>Meldingsafstand: <b id="notifyVal"></b> m</span><input type="range" min="20" max="200" step="10" id="notifyDist" oninput="setNotifyDist(this.value)"></div>
@@ -439,7 +454,7 @@ body.dark .addsr:active{background:#0f1520;}
         <div style="font-size:17px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><svg class="lic" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Depot (terugkeer na laatste stop)</div>
         <input class="txt" id="depotAddr" placeholder="bijv. Wattstraat 3, Raalte">
         <button class="btn small" onclick="saveDepot()">Depot opslaan</button>
-        <div id="depotMsg" style="font-size:13px;color:#5b6470;margin-top:6px"></div>
+        <div id="depotMsg" style="font-size:13px;color:var(--text-soft);margin-top:6px"></div>
       </div>
       <div id="setupSaveRow" style="display:none;padding:0 4px 10px">
         <button class="btn green" style="width:100%" onclick="saveSetupAndStart()"><svg class="lic" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Opslaan &amp; starten</button>
@@ -450,7 +465,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 34</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 35</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -462,7 +477,6 @@ body.dark .addsr:active{background:#0f1520;}
     <div class="body">
       <div id="spdGraphReadout">—</div>
       <div id="spdGraphWrap"><svg id="spdGraphSvg" viewBox="0 0 300 140" preserveAspectRatio="none"></svg></div>
-      <div style="font-size:12px;color:var(--text-soft);text-align:center;margin-top:8px">Sleep met je vinger over de grafiek · gecorrigeerd voor GPS-afwijking (−5 km/u)</div>
     </div>
   </div>
 </div>
@@ -1176,7 +1190,7 @@ function initMap() {
   // camera- en autozoom-animaties overschrijven je voorkeur niet meer
   map.on('zoomstart', e => { if (e && e.originalEvent) { userZooming = true; saveNextZoom = true; camZoomTarget = null; } });
   map.on('zoomend', () => {
-    if (userZooming) { userZooming = false; if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); } }
+    if (userZooming) { userZooming = false; if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); saveDriverProfileSoon(); } }
     saveNextZoom = false;
   });
 }
@@ -1932,13 +1946,14 @@ async function ensureDepot() {
 }
 async function saveDepot() {
   const q = $('depotAddr').value.trim();
-  if (!q) { state.settings.depot = { label: '', lat: null, lon: null }; persist(); $('depotMsg').textContent = 'Depot uitgeschakeld.'; drawStops(); return; }
+  if (!q) { state.settings.depot = { label: '', lat: null, lon: null }; persist(); saveDriverProfile(); $('depotMsg').textContent = 'Depot uitgeschakeld.'; drawStops(); return; }
   $('depotMsg').textContent = 'Adres opzoeken...';
   const res = await geocodeFree(q);
   if (!res) { $('depotMsg').innerHTML = ic('alert','sm') + ' Adres niet gevonden. Probeer bijv. "Wattstraat 3, Raalte".'; return; }
   state.settings.depot = { label: q, lat: res.lat, lon: res.lon };
   depotArrived = false;
   persist();
+  saveDriverProfile();
   $('depotMsg').innerHTML = ic('check','sm') + ' Gevonden: ' + res.naam;
   drawStops(); updateNavLine(); updateNavCard();
 }
@@ -1990,7 +2005,7 @@ function _doShowArrivePop(s) {
     const pLabel = s.seqs
       ? `${ic('package')} Pakketten nr ${s.seqs.join(' & ')}`
       : (typeof s.seq === 'number' ? `${ic('package')} Pakket nr ${s.seq}` : '');
-    const sLabel = s.sender ? `<small style="font-weight:400;color:#5b6470">${s.sender}</small>` : '';
+    const sLabel = s.sender ? `<small style="font-weight:400;color:var(--text-soft)">${s.sender}</small>` : '';
     $('apPkg').innerHTML = pLabel + (pLabel && sLabel ? '<br>' : '') + sLabel;
     $('arrivePop').classList.remove('warn');
   }
@@ -2123,7 +2138,7 @@ function fabZoom(dir) {
   if (!map) return;
   const cur = camZoomTarget != null ? camZoomTarget : map.getZoom();
   const target = Math.max(8, Math.min(20, Math.round(cur) + dir));
-  state.settings.preferredZoom = target; persist();
+  state.settings.preferredZoom = target; persist(); saveDriverProfileSoon();
   // Tijdens GPS-follow gaat de zoom soepel mee in de camera-loop; de oude
   // map.zoomIn() werd steeds afgebroken door de recenter-animatie (haperen)
   if (interpRaf && trackMode !== 'free' && !userZooming) camZoomTarget = target;
@@ -2178,9 +2193,43 @@ function beep() {
 }
 
 function arrive(stop) {
+  const isRideEnd = stop.isDepot;
   stop.status = 'done';
   beep();
   afterStopChange(false);
+  // Geen undo-aanbod bij het depot: dat rondt de hele rit af, niets om terug te draaien
+  if (!isRideEnd) showUndoToast(stop, 'pending', 'auto afgevinkt (GPS)');
+}
+
+/* ---------- ONGEDAAN MAKEN ----------
+   Eén misklik tijdens het rijden moet je niet je route kosten. Elke keer dat
+   een stop op "voltooid" of "overgeslagen" gaat (automatisch via GPS, met de
+   knoppen, of via het stopmenu) verschijnt hier kort een toast om het terug
+   te draaien. Alleen de laatste actie is ongedaan te maken (net als Gmail). */
+let lastAction = null, undoToastTimer = null;
+function markStop(stop, status, label) {
+  if (!stop) return;
+  const prevStatus = stop.status;
+  stop.status = status;
+  afterStopChange(true);
+  showUndoToast(stop, prevStatus, label);
+}
+function showUndoToast(stop, prevStatus, label) {
+  lastAction = { stop, prevStatus };
+  clearTimeout(undoToastTimer);
+  const verb = label || (stop.status === 'done' ? 'Voltooid' : 'Overgeslagen');
+  $('undoToastMsg').textContent = `${verb}: ${stop.street} ${stop.huisnr}`;
+  $('undoToast').classList.add('show');
+  undoToastTimer = setTimeout(hideUndoToast, 6000);
+}
+function hideUndoToast() { $('undoToast').classList.remove('show'); lastAction = null; }
+function undoLastAction() {
+  if (!lastAction) return;
+  const { stop, prevStatus } = lastAction;
+  stop.status = prevStatus;
+  hideUndoToast();
+  afterStopChange(true);
+  if (navigator.vibrate) navigator.vibrate(12);
 }
 
 /* ---------- NAVIGATIEKAART (bovenbalk) ---------- */
@@ -2269,10 +2318,11 @@ function showRideComplete() {
   const eindTijd = new Date().toTimeString().slice(0, 5);
   const el = $('rideCompleteScreen');
   if (!el) return;
-  const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:14px;padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1">${val}</div><div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px">${lbl}</div></div>`;
+  const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:12px;padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1">${val}</div><div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px">${lbl}</div></div>`;
   el.innerHTML =
     '<div class="rcInner" style="padding:calc(env(safe-area-inset-top)+24px) 20px calc(env(safe-area-inset-bottom)+30px);max-width:480px;margin:0 auto;text-align:center">' +
     '<div style="margin-bottom:10px;color:#fff">' + ic('party','big') + '</div>' +
+    '<div style="font-size:11px;font-weight:700;letter-spacing:2.2px;text-transform:uppercase;color:#f0d9a8;margin-bottom:6px">Rit afgerond</div>' +
     '<h2 style="margin:0 0 4px;font-size:30px;color:#fff;font-weight:900">Rit voltooid!</h2>' +
     '<p style="color:rgba(255,255,255,.75);margin:0 0 24px;font-size:16px">Goed werk vandaag!</p>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">' +
@@ -2283,8 +2333,8 @@ function showRideComplete() {
     stat(perStop, 'gem. per stop') +
     stat(eindTijd, 'klaar om') +
     '</div>' +
-    (skipped > 0 ? `<div style="background:rgba(255,200,0,.25);border-radius:12px;padding:10px 14px;margin-bottom:16px;color:#fff;font-size:14px">${ic('alert','sm')} ${skipped} stop(s) overgeslagen</div>` : '') +
-    '<button onclick="$(\'rideCompleteScreen\').style.display=\'none\'" style="width:100%;background:#fff;color:#d40511;border:none;border-radius:16px;font-size:18px;font-weight:800;padding:16px;cursor:pointer">Sluiten</button>' +
+    (skipped > 0 ? `<div style="background:rgba(255,200,0,.25);border-radius:10px;padding:10px 14px;margin-bottom:16px;color:#fff;font-size:14px">${ic('alert','sm')} ${skipped} stop(s) overgeslagen</div>` : '') +
+    '<button onclick="$(\'rideCompleteScreen\').style.display=\'none\'" style="width:100%;background:#fff;color:#d40511;border:none;border-radius:12px;font-size:18px;font-weight:800;padding:16px;cursor:pointer">Sluiten</button>' +
     '</div>';
   el.style.display = 'block';
 }
@@ -2300,8 +2350,8 @@ async function afterStopChange(reroute) {
   updateNavCard();
   renderStopList();
 }
-function completeCurrent() { const c = currentStop(); if (c) { c.status = 'done'; afterStopChange(true); } }
-function skipCurrent() { const c = currentStop(); if (c) { c.status = 'skipped'; afterStopChange(true); } }
+function completeCurrent() { const c = currentStop(); if (c) markStop(c, 'done'); }
+function skipCurrent() { const c = currentStop(); if (c) markStop(c, 'skipped'); }
 function endRide() {
   if (!confirm('Rit beëindigen? De voortgang wordt gewist.')) return;
   localStorage.removeItem(LS);
@@ -2425,8 +2475,8 @@ function openStopMenu(i) {
     b.appendChild(btn);
   };
   if (s.status === 'pending') {
-    mk(ic('check') + ' Markeer als voltooid', 'green', () => { s.status = 'done'; afterStopChange(true); });
-    mk(ic('skip') + ' Overslaan', 'orange', () => { s.status = 'skipped'; afterStopChange(true); });
+    mk(ic('check') + ' Markeer als voltooid', 'green', () => markStop(s, 'done'));
+    mk(ic('skip') + ' Overslaan', 'orange', () => markStop(s, 'skipped'));
     mk(ic('target') + ' Maak dit de volgende stop', '', () => { moveToFront(i); });
     mk(ic('arrowUpShort') + ' Eén plek eerder', 'grey', () => { moveStop(i, -1); });
     mk(ic('arrowDownShort') + ' Eén plek later', 'grey', () => { moveStop(i, +1); });
@@ -2542,9 +2592,9 @@ function pickAddSearch(pc, nr) {
 }
 
 /* ---------- INSTELLINGEN ---------- */
-function setRadius(v) { state.settings.radius = +v; $('radVal').textContent = v; persist(); }
-function setNotifyDist(v) { state.settings.notifyDist = +v; $('notifyVal').textContent = v; persist(); }
-function setGpsOffset(v) { state.settings.gpsOffset = +v; $('offsetVal').textContent = v; persist(); if (map && lastPos) mapCenter(); }
+function setRadius(v) { state.settings.radius = +v; $('radVal').textContent = v; persist(); saveDriverProfileSoon(); }
+function setNotifyDist(v) { state.settings.notifyDist = +v; $('notifyVal').textContent = v; persist(); saveDriverProfileSoon(); }
+function setGpsOffset(v) { state.settings.gpsOffset = +v; $('offsetVal').textContent = v; persist(); saveDriverProfileSoon(); if (map && lastPos) mapCenter(); }
 function onGpsCalibInput(v) { setGpsOffset(v); $('gcVal').textContent = v + '%'; }
 function openGpsCalib() {
   closePanel('panel-settings');
@@ -2558,6 +2608,7 @@ function toggleSet(key, btnId) {
   state.settings[key] = !state.settings[key];
   $(btnId).classList.toggle('on', state.settings[key]);
   persist();
+  saveDriverProfile();
   if (key === 'optimize' && state.settings.optimize) rebuildRoute(true).then(() => { drawStops(); updateNavCard(); });
   if (key === 'allHouseNumbers') applyAllHnrVisibility();
 }
@@ -2644,11 +2695,11 @@ function renderAdminContent() {
   const persoRows = personalEntries.map(([k,v], i) => {
     const t = typeof v === 'string' ? v : (v.text || '');
     const bid = (k.match(/__p__([^_]+)__/) || [])[1] || '?';
-    return '<div class="aRow"><div class="aInfo"><span style="color:#8a93a0">' + ic('user','sm') + ' ' + bid + '</span><br>' + t + '</div><button class="btn red small" onclick="adminDelPersoIdx(' + i + ')">' + ic('trash') + '</button></div>';
+    return '<div class="aRow"><div class="aInfo"><span style="color:var(--grey)">' + ic('user','sm') + ' ' + bid + '</span><br>' + t + '</div><button class="btn red small" onclick="adminDelPersoIdx(' + i + ')">' + ic('trash') + '</button></div>';
   }).join('');
 
   const profRows = profiles.map((p, i) => {
-    return '<div class="aRow"><div class="aInfo"><b>' + (p.name || 'Onbekend') + '</b> · ' + p.id + '<br><span style="color:#8a93a0">Radius: ' + (p.radius || '?') + 'm · Melding: ' + (p.notifyDist || '?') + 'm · ' + (p.darkMode ? ic('moon','sm') : ic('sun','sm')) + '</span></div><button class="btn red small" onclick="adminDelProfIdx(' + i + ')">' + ic('trash') + '</button></div>';
+    return '<div class="aRow"><div class="aInfo"><b>' + (p.name || 'Onbekend') + '</b> · ' + p.id + '<br><span style="color:var(--grey)">Radius: ' + (p.radius || '?') + 'm · Melding: ' + (p.notifyDist || '?') + 'm · ' + (p.darkMode ? ic('moon','sm') : ic('sun','sm')) + '</span></div><button class="btn red small" onclick="adminDelProfIdx(' + i + ')">' + ic('trash') + '</button></div>';
   }).join('');
 
   $('adminContent').innerHTML =
@@ -2656,21 +2707,21 @@ function renderAdminContent() {
       '<h3>' + ic('flask','sm') + ' Test modus</h3>' +
       '<div style="display:flex;align-items:center;gap:12px">' +
         '<button class="switch ' + (testMode ? 'on' : '') + '" onclick="toggleTestMode()"></button>' +
-        '<span style="font-size:14px;color:#5b6470">' + (testMode ? '<b style="color:#ff6d00">Aan</b> — opslaan uitgeschakeld' : 'Uit — normale werking') + '</span>' +
+        '<span style="font-size:14px;color:var(--text-soft)">' + (testMode ? '<b style="color:#ff6d00">Aan</b> — opslaan uitgeschakeld' : 'Uit — normale werking') + '</span>' +
       '</div>' +
     '</div>' +
     '<div class="aSection">' +
       '<h3>' + ic('megaphone','sm') + ' Gedeelde meldingen (' + noteEntries.length + ' adressen)</h3>' +
-      (noteEntries.length === 0 ? '<p style="color:#8a93a0;font-size:13px">Geen meldingen.</p>' : noteRows) +
+      (noteEntries.length === 0 ? '<p style="color:var(--grey);font-size:13px">Geen meldingen.</p>' : noteRows) +
       (noteEntries.length > 0 ? '<button class="btn red" style="width:100%;margin-top:8px" onclick="adminClearNotes()">' + ic('trash') + ' Alle meldingen wissen</button>' : '') +
     '</div>' +
     '<div class="aSection">' +
       '<h3>' + ic('lock','sm') + ' Persoonlijke meldingen (' + personalEntries.length + ')</h3>' +
-      (personalEntries.length === 0 ? '<p style="color:#8a93a0;font-size:13px">Geen persoonlijke meldingen.</p>' : persoRows) +
+      (personalEntries.length === 0 ? '<p style="color:var(--grey);font-size:13px">Geen persoonlijke meldingen.</p>' : persoRows) +
     '</div>' +
     '<div class="aSection">' +
       '<h3>' + ic('user','sm') + ' Rijdersprofielen (' + profiles.length + ')</h3>' +
-      (profiles.length === 0 ? '<p style="color:#8a93a0;font-size:13px">Geen profielen.</p>' : profRows) +
+      (profiles.length === 0 ? '<p style="color:var(--grey);font-size:13px">Geen profielen.</p>' : profRows) +
       (profiles.length > 0 ? '<button class="btn red" style="width:100%;margin-top:8px" onclick="adminClearProfiles()">' + ic('trash') + ' Alle profielen wissen</button>' : '') +
     '</div>' +
     '<div class="aSection">' +
@@ -2679,7 +2730,7 @@ function renderAdminContent() {
       '<button class="btn orange" style="width:100%;margin-bottom:8px" onclick="adminClearCache()">' + ic('database') + ' Geocode cache wissen (' + (cacheSize/1024).toFixed(1) + ' KB)</button>' +
       '<button class="btn red" style="width:100%" onclick="adminClearAll()">' + ic('trash') + ' Alle app-data wissen</button>' +
     '</div>' +
-    '<div style="text-align:center;color:#8a93a0;font-size:12px;padding:8px 0 20px">localStorage: ' + totalKB + ' KB totaal</div>';
+    '<div style="text-align:center;color:var(--grey);font-size:12px;padding:8px 0 20px">localStorage: ' + totalKB + ' KB totaal</div>';
 }
 function adminDelNoteIdx(i) { const k=(window._adminNoteKeys||[])[i]; if(!k)return; const all=getAllNotes(); delete all[k]; saveAllNotes(all); renderAdminContent(); }
 function adminDelPersoIdx(i) { const k=(window._adminPersoKeys||[])[i]; if(!k)return; const all=getAllNotes(); delete all[k]; saveAllNotes(all); renderAdminContent(); }
@@ -2806,7 +2857,7 @@ function renderNotesList(s) {
     const thr = noteThreshold(shared.text);
     const countLabel = shared.count >= 2
       ? ` <span style="color:#e53935;font-weight:700">(${shared.count}×)</span>`
-      : shared.count >= thr ? '' : ` <span style="color:#8a93a0;font-size:12px">(nog ${thr - shared.count}× nodig voor popup)</span>`;
+      : shared.count >= thr ? '' : ` <span style="color:var(--grey);font-size:12px">(nog ${thr - shared.count}× nodig voor popup)</span>`;
     html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span>${shared.text}${countLabel}</span>
       <button class="btn red small" onclick="deleteSharedNote()">${ic('trash')}</button>
@@ -2815,12 +2866,12 @@ function renderNotesList(s) {
   const personal = getPersonalNote(s);
   if (personal) {
     html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center;background:#fff8e1">
-      <span>${personal.text} <span style="color:#8a93a0;font-size:12px">${ic('lock','sm')} persoonlijk</span></span>
+      <span>${personal.text} <span style="color:var(--grey);font-size:12px">${ic('lock','sm')} persoonlijk</span></span>
       <button class="btn red small" onclick="deletePersonalNote()">${ic('trash')}</button>
     </div>`;
   }
   if (!html) {
-    html = '<div style="color:#8a93a0;font-size:14px;margin-bottom:8px">Nog geen meldingen voor dit adres.</div>';
+    html = '<div style="color:var(--grey);font-size:14px;margin-bottom:8px">Nog geen meldingen voor dit adres.</div>';
   }
   el.innerHTML = html;
 }
@@ -2869,7 +2920,7 @@ function applyDark(on) {
   state.settings.darkMode = on;
   $('swDark').classList.toggle('on', on);
 }
-function toggleDark() { applyDark(!state.settings.darkMode); persist(); }
+function toggleDark() { applyDark(!state.settings.darkMode); persist(); saveDriverProfile(); }
 
 /* ---------- EERSTE KEER SETUP ---------- */
 function saveSetupAndStart() {
@@ -2894,20 +2945,24 @@ function saveProfileAndConfirm() {
   setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 2000);
 }
 
-/* ---------- PER-RIJDER INSTELLINGEN ---------- */
+/* ---------- PER-RIJDER INSTELLINGEN ----------
+   Elke instelling die de gebruiker kan aanpassen wordt automatisch in het
+   profiel van de actieve rijder opgeslagen (localStorage, per bezorgerId) —
+   niet pas als je op "Instellingen opslaan" drukt. Zo staat bij de volgende
+   rit (of na een herstart) alles precies zoals je het achterliet, inclusief
+   de zoom-stand waarop je eindigde. */
+const PROFILE_FIELDS = ['notifyDist', 'radius', 'darkMode', 'gpsOffset', 'autoAdvance', 'optimize', 'autoZoom', 'allHouseNumbers', 'sound', 'preferredZoom', 'depot'];
+let profileSaveT = null;
 function saveDriverProfile() {
   const ride = state.rides && state.rides[state.rideIdx];
   const pid = ride && ride.bezorgerId;
   if (!pid) return;
-  const profile = {
-    name: ride.bezorger || '',
-    notifyDist: state.settings.notifyDist,
-    radius: state.settings.radius,
-    darkMode: state.settings.darkMode,
-    gpsOffset: state.settings.gpsOffset,
-  };
+  const profile = { name: ride.bezorger || '' };
+  for (const k of PROFILE_FIELDS) if (state.settings[k] !== undefined) profile[k] = state.settings[k];
   try { localStorage.setItem(PROFILE_KEY + '_' + pid, JSON.stringify(profile)); } catch {}
 }
+// Kleine debounce voor sliders (die vuren tientallen keren tijdens het slepen)
+function saveDriverProfileSoon() { clearTimeout(profileSaveT); profileSaveT = setTimeout(saveDriverProfile, 400); }
 function loadDriverProfile(bezorgerId) {
   try {
     const ride = state.rides && state.rides[state.rideIdx];
