@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 42: audit-ronde met twee echte bugs en drie accubesparingen. (1) De adres-cache verloor ~80% van de opgezochte adressen doordat de 5 parallelle geocode-workers elkaars schrijfacties overschreven — vrijwel elke rit werden alle adressen dus opnieuw opgehaald (traag laadscherm). Nu één gedeeld object met gedebouncede opslag. (2) Mislukte snelheidslimiet-aanvragen zetten geen afkoelperiode, waardoor er bij slecht bereik eindeloos nieuwe Overpass-verzoeken werden afgevuurd. (3) De routescan in de animatielus liep elke frame vanaf het begin; nu binair zoeken + de volledige scan gecapt op 4x/s. (4) De routelijn wordt niet meer naar de GPU gestuurd als er niets veranderd is. (5) GPS, animatielus en schermvergrendeling gaan uit zodra de rit klaar is (04-08-2026) -->
+<!-- Build 43: fix voor "eerste kwartier alleen hemelsbrede lijnen". De app vuurde bij ritstart twee loodzware verzoeken op de gratis OSRM-demoserver af (een afstandsmatrix van 140x140 = 19.600 routeberekeningen, boven OSRM's eigen limiet van 100, plus de volledige geometrie van de hele rit), waarna die server ons afkneep — en doordat de app daarna bij elke ~30 m gewoon bleef doorvuren, bleef die blokkade in stand. Nu: matrix afgekapt op 100 punten, 'simplified' geometrie i.p.v. 'full', een oplopende wachttijd na mislukkingen (900 -> 33 verzoeken tijdens een storing van een kwartier), en een mislukte aanvraag gooit een al opgehaalde route naar dezelfde stop niet meer weg. Ook de accubesparing van build 39/42 iets ruimer afgesteld (~40fps rijdend, 2x/s bij stilstand) (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 42</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 43</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1290,8 +1290,18 @@ async function rebuildRoute(allowOptimize) {
     if (doOptimize) repositionFreeStops();
     let start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
     let pts = [...start, ...pendingStops()];
-    // Stap 2: lokale hill-climb op de resterende (wél getijdslotte) stops
-    if (doOptimize && pts.length - start.length >= 3 && pts.length <= 140) {
+    // Stap 2: lokale hill-climb op de resterende (wél getijdslotte) stops.
+    // De afstandsmatrix wordt afgekapt op 100 punten: dat is de standaard
+    // bovengrens van OSRM (max-table-size) én meteen de zwaarste aanvraag die
+    // de app doet — bij 140 punten zijn dat 19.600 routeberekeningen ineens,
+    // waar de gratis demoserver ons om afknijpt. Sinds build 36 stond de cap
+    // op 140, waardoor die aanvraag bij grote ritten dus én mislukte (geen
+    // optimalisatie) én de server voor de rest van de rit tegen ons in het
+    // harnas joeg (rechte lijnen i.p.v. wegen). We optimaliseren nu de eerste
+    // ~100 stops; dat is precies het deel dat je als eerste rijdt.
+    const OSRM_TABLE_MAX = 100;
+    if (doOptimize && pts.length - start.length >= 3) {
+      if (pts.length > OSRM_TABLE_MAX) pts = pts.slice(0, OSRM_TABLE_MAX);
       try {
         const M = await osrmTable(pts);
         const n = pts.length;
@@ -1299,12 +1309,19 @@ async function rebuildRoute(allowOptimize) {
         const before = tourCost(identity, M, pts);
         const { order, dur } = optimizeOrder(n, M, pts, 3);
         if (before - dur > 45) { // alleen toepassen als het echt tijd (of linkerkant-winst) scheelt
-          state.optSaving = Math.round((before - dur) / 60);
           const pendSnapshot = pendingStops();
           const offset = start.length;
-          const newPend = order.filter(ix => ix >= offset).map(ix => pendSnapshot[ix - offset]);
-          let pi = 0;
-          state.stops = state.stops.map(s => (s.status === 'pending' && s.lat) ? newPend[pi++] : s);
+          const nIncl = n - offset; // aantal stops dat in de matrix paste
+          const optimized = order.filter(ix => ix >= offset).map(ix => pendSnapshot[ix - offset]);
+          // Stops die buiten de matrix vielen (rit > 100 stops) blijven
+          // ONGEWIJZIGD achteraan staan. Zonder dit kreeg elke stop voorbij
+          // de honderdste `undefined` toegewezen en was de rit gesloopt.
+          const newPend = optimized.concat(pendSnapshot.slice(nIncl));
+          if (newPend.length === pendSnapshot.length && newPend.every(Boolean)) {
+            state.optSaving = Math.round((before - dur) / 60);
+            let pi = 0;
+            state.stops = state.stops.map(s => (s.status === 'pending' && s.lat) ? newPend[pi++] : s);
+          }
         }
       } catch (e) { /* optimalisatie is optioneel */ }
     }
@@ -1312,9 +1329,14 @@ async function rebuildRoute(allowOptimize) {
     start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
     pts = [...start, ...pend2];
     if (pts.length >= 2) {
-      // Volledige geometrie alleen ophalen bij een echte (her)planning: nodig
-      // voor het rit-overzicht (kaart) en de links/rechts-badge per stop.
-      const route = await osrmRoute(pts, allowOptimize ? 'full' : 'false');
+      // Geometrie alleen ophalen bij een echte (her)planning, want die is
+      // alleen nodig voor het minikaartje in het rit-overzicht. Bewust
+      // 'simplified' i.p.v. 'full': de volledige geometrie van een rit van
+      // 100+ stops is een enorm antwoord (elke bocht van tientallen
+      // kilometers weg), terwijl het op een kaartje van een paar centimeter
+      // niet te zien is. Scheelt fors laadtijd én belasting van de server,
+      // die ons daardoor minder snel afknijpt.
+      const route = await osrmRoute(pts, allowOptimize ? 'simplified' : 'false');
       state.routeDist = route.distance;
       if (allowOptimize && route.geometry) state.fullRouteGeom = route.geometry;
       // cumulatieve rijtijd per pending stop
@@ -1348,6 +1370,9 @@ async function rebuildRoute(allowOptimize) {
 
 /* ---------- NAVIGATIELIJN: alleen naar de huidige stop ---------- */
 let navLineOrigin = null, navLineTs = 0, navLineStop = null;
+// Bij welke stop hoort de routelijn die nu getekend staat, en hoeveel keer is
+// het ophalen achter elkaar mislukt (voor de wachttijd hieronder).
+let routeGeomStop = null, navFail = 0, navBackoffUntil = 0;
 // Zelfde bescherming als rebuildBusy hierboven: onPos() vuurt per GPS-fix
 // (elke 1-5s) en zette navLineTs al bij de AANROEP i.p.v. bij het klaar zijn
 // — bij een trage server (of eentje die de fetch-timeout raakt) kon dat een
@@ -1364,23 +1389,50 @@ async function updateNavLine() {
   try {
   let cur = currentStop();
   const origin = lastPos ? { lat: lastPos.lat, lon: lastPos.lon } : null;
-  state.routeGeom = null;
-  if (cur && cur.lat && origin) {
-    try {
-      const route = await osrmRouteSnap(origin, cur);
-      state.routeGeom = route.geometry;
-      state.routeSteps = (route.legs && route.legs[0] && route.legs[0].steps) ? route.legs[0].steps : [];
-      navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
-      if (state.legInfo.length && state.legInfo[0].stop === cur) {
-        const delta = route.duration - state.legInfo[0].cumDur;
-        if (Math.abs(delta) > 5) state.legInfo.forEach(l => { l.cumDur += delta; });
-      }
-    } catch (e) {
-      // Fallback: rechte lijn van GPS naar volgende stop als OSRM faalt
-      state.routeGeom = { type: 'LineString', coordinates: [[origin.lon, origin.lat], [cur.lon, cur.lat]] };
-      state.routeSteps = [];
-      navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
+  if (!cur || !cur.lat || !origin) {
+    state.routeGeom = null; routeGeomStop = null;
+    drawRoute(); updateNavCard();
+    return;
+  }
+  // Noodlijn: kaarsrechte lijn naar de stop. Alleen gebruiken als we écht
+  // niets beters hebben voor DEZE stop.
+  const rechteLijn = () => {
+    state.routeGeom = { type: 'LineString', coordinates: [[origin.lon, origin.lat], [cur.lon, cur.lat]] };
+    state.routeSteps = [];
+    routeGeomStop = cur;
+  };
+  // Blijft de routeserver weigeren of te traag antwoorden, dan even NIET
+  // blijven doorvuren. Zonder deze wachttijd stuurde de app bij elke ~30 m
+  // een nieuw verzoek; een server die ons tijdelijk afknijpt (de gratis
+  // OSRM-demoserver doet dat bij te veel verkeer) houdt die blokkade dan
+  // alleen maar in stand — vandaar dat het minutenlang bij rechte lijnen
+  // bleef. Nu verdubbelt de wachttijd per mislukking tot maximaal 30s.
+  if (Date.now() < navBackoffUntil) {
+    if (!(routeGeomStop === cur && state.routeGeom)) rechteLijn();
+    drawRoute(); updateNavCard();
+    return;
+  }
+  try {
+    const route = await osrmRouteSnap(origin, cur);
+    state.routeGeom = route.geometry;
+    state.routeSteps = (route.legs && route.legs[0] && route.legs[0].steps) ? route.legs[0].steps : [];
+    routeGeomStop = cur;
+    navFail = 0; navBackoffUntil = 0;
+    navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
+    if (state.legInfo.length && state.legInfo[0].stop === cur) {
+      const delta = route.duration - state.legInfo[0].cumDur;
+      if (Math.abs(delta) > 5) state.legInfo.forEach(l => { l.cumDur += delta; });
     }
+  } catch (e) {
+    navFail++;
+    navBackoffUntil = Date.now() + Math.min(2000 * Math.pow(2, navFail - 1), 30000);
+    // Hadden we al een echte route naar dezelfde stop? Die dan LATEN STAAN.
+    // Voorheen werd 'ie hier weggegooid en verving een rechte lijn een
+    // prima route, ook als er maar één aanvraag mislukte. Je rijdt naar
+    // hetzelfde adres, dus de vorige weg-route klopt nog vrijwel volledig;
+    // drawRouteClipped knipt 'm netjes mee op je huidige positie.
+    if (!(routeGeomStop === cur && state.routeGeom)) rechteLijn();
+    navLineOrigin = origin; navLineTs = Date.now(); navLineStop = cur;
   }
   drawRoute();
   updateNavCard();
@@ -1816,8 +1868,12 @@ function smoothMarker() {
   // frame lopen zodat de getoonde positie bij het weer optrekken meteen
   // weer klopt, alleen het duurdere kaart-schrijfwerk wordt overgeslagen.
   const nowR = performance.now();
-  const nearlyStill = (spdEma || 0) < 0.4 && smLastRenderPos && hav(smLastRenderPos, { lat: dLat, lon: dLon }) < 1.5;
-  const minRenderDt = nearlyStill ? 900 : 33;
+  // Drempels wat ruimer gezet dan in build 39: ~40fps tijdens het rijden
+  // (i.p.v. 30) voelt weer echt vloeiend, en bij stilstand 2x/s (i.p.v. ~1x)
+  // zodat het ook bij het langzaam aanrijden van een stop niet stroef oogt.
+  // "Bijna stil" vraagt nu ook echt stilstand (0,3 m/s ≈ 1 km/u).
+  const nearlyStill = (spdEma || 0) < 0.3 && smLastRenderPos && hav(smLastRenderPos, { lat: dLat, lon: dLon }) < 1.0;
+  const minRenderDt = nearlyStill ? 450 : 24;
   if (nowR - smRenderLastTs >= minRenderDt) {
     smRenderLastTs = nowR;
     smLastRenderPos = { lat: dLat, lon: dLon };
