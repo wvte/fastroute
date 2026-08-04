@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 43: fix voor "eerste kwartier alleen hemelsbrede lijnen". De app vuurde bij ritstart twee loodzware verzoeken op de gratis OSRM-demoserver af (een afstandsmatrix van 140x140 = 19.600 routeberekeningen, boven OSRM's eigen limiet van 100, plus de volledige geometrie van de hele rit), waarna die server ons afkneep — en doordat de app daarna bij elke ~30 m gewoon bleef doorvuren, bleef die blokkade in stand. Nu: matrix afgekapt op 100 punten, 'simplified' geometrie i.p.v. 'full', een oplopende wachttijd na mislukkingen (900 -> 33 verzoeken tijdens een storing van een kwartier), en een mislukte aanvraag gooit een al opgehaalde route naar dezelfde stop niet meer weg. Ook de accubesparing van build 39/42 iets ruimer afgesteld (~40fps rijdend, 2x/s bij stilstand) (04-08-2026) -->
+<!-- Build 44: ritstart is nu vrijwel meteen klaar. De afstandsmatrix voor de route-optimalisatie (bij 90 stops al 8.281 routeberekeningen ineens, op de gratis gedeelde OSRM-demoserver) was verreweg de zwaarste aanvraag van de app: die duurde tientallen seconden of liep in een timeout, waarna km 0,0 en rijtijd een streepje toonde. Die matrix wordt nu alleen nog opgehaald bij kleine ritten (<=50 punten); daarboven rekent de app lokaal met hemelsbrede afstanden — geen netwerk, ~15ms voor 114 stops. Verder een herkansing zonder geometrie als de hoofdroute-aanvraag mislukt (zodat km en rijtijd er alsnog zijn), en bij een onbekende afstand een streepje i.p.v. "0,0" (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 43</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 44</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -913,9 +913,9 @@ async function osrmRouteSnap(from, to) {
   if (j.code !== 'Ok') throw new Error('OSRM snap: ' + j.code);
   return j.routes[0];
 }
-async function osrmRoute(points, overview = 'full', withSteps = false) {
+async function osrmRoute(points, overview = 'full', withSteps = false, ms = 18000) {
   const cs = points.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`, 18000);
+  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`, ms);
   if (!r.ok) throw new Error('OSRM ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM: ' + j.code);
@@ -1201,7 +1201,9 @@ function showRidePreview() {
   const real = state.stops.filter(s => s.lat && !s.isDepot);
   const numStops = real.length;
   const numPkgs = real.reduce((n, s) => n + (s.seqs ? s.seqs.length : 1), 0);
-  const km = (state.routeDist / 1000).toFixed(1).replace('.', ',');
+  // Bij 0 is de route niet gelukt (server onbereikbaar) — dan een streepje
+  // tonen i.p.v. een keihard "0,0", want dat leest als "deze rit is 0 km".
+  const km = state.routeDist ? (state.routeDist / 1000).toFixed(1).replace('.', ',') : '—';
   const totalSec = state.legInfo.length ? state.legInfo[state.legInfo.length - 1].cumDur : 0;
   const h = Math.floor(totalSec / 3600), m = Math.round((totalSec % 3600) / 60);
   const durStr = totalSec ? (h > 0 ? `${h}u ${m}min` : `${m} min`) : '—';
@@ -1291,19 +1293,27 @@ async function rebuildRoute(allowOptimize) {
     let start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
     let pts = [...start, ...pendingStops()];
     // Stap 2: lokale hill-climb op de resterende (wél getijdslotte) stops.
-    // De afstandsmatrix wordt afgekapt op 100 punten: dat is de standaard
-    // bovengrens van OSRM (max-table-size) én meteen de zwaarste aanvraag die
-    // de app doet — bij 140 punten zijn dat 19.600 routeberekeningen ineens,
-    // waar de gratis demoserver ons om afknijpt. Sinds build 36 stond de cap
-    // op 140, waardoor die aanvraag bij grote ritten dus én mislukte (geen
-    // optimalisatie) én de server voor de rest van de rit tegen ons in het
-    // harnas joeg (rechte lijnen i.p.v. wegen). We optimaliseren nu de eerste
-    // ~100 stops; dat is precies het deel dat je als eerste rijdt.
-    const OSRM_TABLE_MAX = 100;
-    if (doOptimize && pts.length - start.length >= 3) {
-      if (pts.length > OSRM_TABLE_MAX) pts = pts.slice(0, OSRM_TABLE_MAX);
+    // De afstandsmatrix was verreweg de zwaarste aanvraag van de hele app:
+    // bij 90 stops al 8.281 routeberekeningen ineens, op een GRATIS GEDEELDE
+    // demoserver. Die deed daar tientallen seconden over of weigerde 'm, en
+    // knapte daarna ook de gewone navigatie af. Daarom halen we die matrix
+    // alleen nog op bij kleine ritten; daarboven rekenen we lokaal met
+    // hemelsbrede afstanden (`hav`, gedeeld door een gemiddelde snelheid).
+    // Dat kost GEEN netwerk en is meteen klaar. De optimalisatie verschuift
+    // stops toch maar maximaal 3 plekken binnen dezelfde buurt, en daar is
+    // hemelsbrede afstand een prima maatstaf voor — dezelfde aanpak die
+    // `bestInsertIndex()` al gebruikte voor de 900- en .1/.2-pakketten.
+    const OSRM_TABLE_MAX = 50;   // matrix = kwadratisch, dus klein houden
+    const AVG_MS = 7.5;          // ~27 km/u gemiddeld in de bebouwde kom
+    if (doOptimize && pts.length - start.length >= 3 && pts.length <= 200) {
       try {
-        const M = await osrmTable(pts);
+        let M = null;
+        if (pts.length <= OSRM_TABLE_MAX) {
+          try { M = await osrmTable(pts); } catch (e) { M = null; }
+        }
+        if (!M) {
+          M = pts.map(a => pts.map(b => hav(a, b) / AVG_MS));
+        }
         const n = pts.length;
         const identity = Array.from({ length: n }, (_, k) => k);
         const before = tourCost(identity, M, pts);
@@ -1336,7 +1346,17 @@ async function rebuildRoute(allowOptimize) {
       // kilometers weg), terwijl het op een kaartje van een paar centimeter
       // niet te zien is. Scheelt fors laadtijd én belasting van de server,
       // die ons daardoor minder snel afknijpt.
-      const route = await osrmRoute(pts, allowOptimize ? 'simplified' : 'false');
+      // Mislukt deze aanvraag, dan blijven km/rijtijd op nul staan en zag je
+      // in het rit-overzicht "0,0 km" en een streepje bij de rijtijd. Daarom
+      // één herkansing zonder geometrie: dat is een veel lichter antwoord en
+      // levert km + rijtijd alsnog op (alleen het minikaartje mist dan de
+      // wegenlijn).
+      let route = null;
+      try {
+        route = await osrmRoute(pts, allowOptimize ? 'simplified' : 'false', false, 20000);
+      } catch (e) {
+        route = await osrmRoute(pts, 'false', false, 12000);
+      }
       state.routeDist = route.distance;
       if (allowOptimize && route.geometry) state.fullRouteGeom = route.geometry;
       // cumulatieve rijtijd per pending stop
