@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 35: warme "quiet luxury" restyle (geïnspireerd op nomadigital.vercel.app, DHL rood/geel behouden), instellingen + zoomniveau slaan nu écht per rijder automatisch op, ongedaan-maken toast bij afronden/overslaan van een stop, snelheidsgrafiek zonder onnodig onderschrift (04-08-2026) -->
+<!-- Build 36: volledig nieuwe "verzendlabel"-visuele stijl (mono-font, harde offset-shadows, barcode-decoratie, dagelijks wisselend feitje op het startscherm), undo-toast weer verwijderd, nieuw rit-overzichtscherm vóór het starten (stops/pakketten/km/rijtijd + minikaart met alle adressen + Start rit-knop), route-optimalisatie herschreven (hill-climb met O(1) positielookup, .1/.2-pakketten vrij herplaatsbaar los van hun PDF-volgorde, links-van-de-weg-stops krijgen een tijdsbonus t.o.v. rechts) (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -23,17 +23,26 @@
      koele grijsblauw van eerst — DHL rood/geel blijven de enige felle kleuren */
   --gold:#c9a96e; --gold-dark:#a98950;
   --bg:#f7f3ec; --card:#fffdfa; --text:#211c17; --text-soft:#756a5c; --border:#e9e0d2;
-  --radius:14px; --radius-lg:20px; --radius-sm:10px;
+  --radius:10px; --radius-lg:14px; --radius-sm:7px;
   --shadow-sm:0 1px 2px rgba(33,22,10,.05),0 2px 6px rgba(33,22,10,.05);
   --shadow-md:0 6px 18px rgba(33,22,10,.10);
   --shadow-lg:0 12px 30px rgba(33,22,10,.16);
   --font:-apple-system,'SF Pro',Segoe UI,Roboto,system-ui,sans-serif;
+  /* "Verzendlabel"-stijl: harde platte lijnen i.p.v. zachte kaartjes, een
+     getikte mono-font voor alles wat op een pakketlabel zou staan (nummers,
+     tijden, afstanden), vetgedrukte tracked capitals voor koppen — voelt
+     als een manifest/pakbon, niet als een generieke app-template. */
+  --font-mono:ui-monospace,'SF Mono','Roboto Mono','Courier New',monospace;
+  --ink:#211c17;
 }
 /* Kleine uppercase, getrackte "eyebrow"-labeltjes — het premium accent-detail
    van de referentiestijl, in de gedempte goudtint zodat DHL rood/geel het
    enige echte signaalkleur blijven. */
 .eyebrow{font-size:11px;font-weight:700;letter-spacing:2.2px;text-transform:uppercase;color:var(--gold-dark);}
 body.dark .eyebrow{color:var(--gold);}
+/* Barcode-streepje: puur decoratief, verwijst naar het pakketlabel-thema */
+.barcode{height:20px;background:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 5px,var(--ink) 5px 6px,transparent 6px 11px,var(--ink) 11px 14px,transparent 14px 17px,var(--ink) 17px 19px,transparent 19px 25px);opacity:.5;}
+body.dark .barcode{filter:invert(1);opacity:.35;}
 /* Dark mode */
 body.dark{--bg:#171310;--card:#211b16;--text:#f1ece3;--text-soft:#a89d8d;--border:#352c22;}
 body.dark header.bar{background:linear-gradient(180deg,#9c0009,#7e0007);}
@@ -49,38 +58,58 @@ html,body{margin:0;padding:0;height:100%;font-family:var(--font);background:var(
 body{height:100dvh;overflow:hidden;} /* geen dode witte balk onder de knoppen op iOS */
 .screen{display:none;height:100dvh;flex-direction:column;}
 .screen.active{display:flex;}
-header.bar{background:linear-gradient(180deg,#e10613,#c30410);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;font-size:21px;font-weight:800;display:flex;align-items:center;gap:11px;flex:0 0 auto;border-bottom:3px solid var(--accent);box-shadow:0 2px 10px rgba(16,20,26,.12);letter-spacing:-.02em;}
-header.bar .sub{font-size:13px;font-weight:500;opacity:.85;display:block;}
-.btn{border:none;border-radius:var(--radius-sm);font-size:19px;font-weight:700;padding:16px 20px;cursor:pointer;color:#fff;background:var(--blue);width:100%;box-shadow:var(--shadow-sm);transition:transform .08s ease,filter .12s ease,box-shadow .12s ease;display:inline-flex;align-items:center;justify-content:center;gap:9px;letter-spacing:-.01em;}
-.btn:active{transform:scale(.97);filter:brightness(.96);}
+header.bar{background:linear-gradient(180deg,#e10613,#c30410);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;font-size:18px;font-weight:800;display:flex;align-items:center;gap:11px;flex:0 0 auto;border-bottom:3px solid var(--accent);box-shadow:0 2px 10px rgba(16,20,26,.12);letter-spacing:1.2px;text-transform:uppercase;}
+header.bar .sub{font-size:12px;font-weight:600;opacity:.85;display:block;letter-spacing:.4px;text-transform:none;}
+.btn{border:2px solid var(--ink);border-radius:var(--radius-sm);font-size:18px;font-weight:800;padding:15px 20px;cursor:pointer;color:#fff;background:var(--blue);width:100%;box-shadow:3px 3px 0 var(--ink);transition:transform .08s ease,box-shadow .08s ease;display:inline-flex;align-items:center;justify-content:center;gap:9px;letter-spacing:.3px;text-transform:uppercase;}
+.btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink);}
 .btn.orange{background:var(--accent);color:#1a1d23;}
 .btn.green{background:var(--green);}
 .btn.red{background:var(--red);}
-.btn.grey{background:#eef0f4;color:var(--text);box-shadow:none;}
+.btn.grey{background:var(--card);color:var(--text);box-shadow:3px 3px 0 var(--border);border-color:var(--border);}
+.btn.grey:active{box-shadow:0 0 0 var(--border);}
 body.dark .btn.grey{background:#222c42;color:var(--text);}
-.btn.small{font-size:16px;padding:11px 16px;width:auto;}
+.btn.small{font-size:15px;padding:10px 16px;width:auto;box-shadow:2px 2px 0 var(--ink);}
 .btn .lic{width:21px;height:21px;flex:0 0 auto;}
 .content{flex:1;overflow-y:auto;padding:18px;width:100%;max-width:480px;margin:0 auto;}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:13px;box-shadow:var(--shadow-sm);}
+.card{background:var(--card);border:1.5px solid var(--ink);border-radius:var(--radius);padding:18px;margin-bottom:13px;box-shadow:3px 3px 0 var(--border);}
 /* upload */
-#drop{border:2.5px dashed rgba(212,5,17,.45);border-radius:var(--radius-lg);padding:54px 22px;text-align:center;font-size:19px;font-weight:700;color:var(--blue);background:linear-gradient(180deg,#fffdf3,#fff8e4);transition:border-color .15s,background .15s;}
+#drop{border:2.5px dashed var(--ink);border-radius:var(--radius-lg);padding:54px 22px;text-align:center;font-size:19px;font-weight:700;color:var(--blue);background:linear-gradient(180deg,#fffdf3,#fff8e4);transition:border-color .15s,background .15s;}
 #drop:active{border-color:var(--blue);background:#fff6df;}
 #drop b{font-size:42px;display:block;margin-bottom:8px;}
 #drop small{font-weight:500;}
+/* Feitje-van-de-dag: een "afscheurbonnetje" alsof het van een pakketlabel
+   komt — wisselt dagelijks, puur decoratief, geen netwerk nodig (werkt dus
+   ook offline gewoon meteen). */
+#factTicket{background:var(--card);border:1.5px solid var(--ink);border-radius:8px;padding:14px 16px 16px;margin:16px 2px 4px;transform:rotate(-1deg);box-shadow:3px 3px 0 var(--border);position:relative;}
+#factTicket::before,#factTicket::after{content:'';position:absolute;top:50%;width:16px;height:16px;background:var(--bg);border:1.5px solid var(--ink);border-radius:50%;margin-top:-8px;}
+#factTicket::before{left:-9px;}
+#factTicket::after{right:-9px;}
+#factTicket .ftLabel{font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--blue);display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+#factTicket .ftLabel .lic{width:14px;height:14px;}
+#factTicket .ftText{font-size:14.5px;line-height:1.45;font-weight:600;}
+#factTicket .ftEdge{border-top:1.5px dashed var(--border);margin-top:10px;padding-top:8px;font-size:10.5px;font-family:var(--font-mono);color:var(--text-soft);letter-spacing:.5px;display:flex;justify-content:space-between;}
 /* ritlijst */
-#rideSearch{width:100%;font-size:18px;padding:14px 16px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--card);color:var(--text);margin-bottom:14px;box-shadow:var(--shadow-sm);}
+#rideSearch{width:100%;font-size:18px;padding:14px 16px;border-radius:var(--radius-sm);border:1.5px solid var(--ink);background:var(--card);color:var(--text);margin-bottom:14px;font-family:var(--font-mono);}
 #rideSearch:focus{outline:none;border-color:var(--blue);}
-.ride-item{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:11px;box-shadow:var(--shadow-sm);cursor:pointer;border-left:6px solid var(--blue);transition:transform .08s ease,box-shadow .12s ease;}
-.ride-item:active{transform:scale(.985);box-shadow:var(--shadow-md);}
-.ride-item .rno{font-size:25px;font-weight:800;color:var(--blue);letter-spacing:-.02em;}
+.ride-item{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1.5px solid var(--ink);border-radius:var(--radius);padding:16px 18px;margin-bottom:11px;box-shadow:3px 3px 0 var(--border);cursor:pointer;border-left:8px solid var(--blue);transition:transform .08s ease,box-shadow .08s ease;}
+.ride-item:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--border);}
+.ride-item .rno{font-size:23px;font-weight:800;color:var(--blue);font-family:var(--font-mono);letter-spacing:-.02em;}
 .ride-item .rname{font-size:17px;font-weight:600;}
-.ride-item .rmeta{font-size:14px;color:var(--text-soft);margin-top:2px;}
+.ride-item .rmeta{font-size:13px;color:var(--text-soft);margin-top:2px;font-family:var(--font-mono);}
 .ride-item .arrow{color:var(--grey);display:flex;align-items:center;}
 .ride-item .arrow .lic{width:24px;height:24px;}
 /* loading */
 #loadbarWrap{background:var(--border);border-radius:99px;height:14px;overflow:hidden;margin-top:16px;}
 #loadbar{background:linear-gradient(90deg,var(--accent),var(--accent-dark));height:100%;width:0%;transition:width .25s ease;border-radius:99px;}
 #loadmsg{font-size:16px;margin-top:12px;color:var(--text-soft);font-weight:500;}
+/* rit-overzicht (voor het starten) */
+#scr-preview .content{display:flex;flex-direction:column;padding-bottom:calc(env(safe-area-inset-bottom) + 18px);}
+#previewMap{height:36vh;min-height:220px;border:1.5px solid var(--ink);border-radius:var(--radius);box-shadow:3px 3px 0 var(--border);margin-bottom:14px;overflow:hidden;position:relative;}
+#previewStats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.pstat{background:var(--card);border:1.5px solid var(--ink);border-radius:var(--radius-sm);padding:13px 6px;text-align:center;box-shadow:2px 2px 0 var(--border);}
+.pstat .pv{font-size:22px;font-weight:900;font-family:var(--font-mono);line-height:1;color:var(--text);letter-spacing:-.02em;}
+.pstat .pl{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-soft);margin-top:6px;}
+#previewSpacer{flex:1;min-height:10px;}
 /* nav screen */
 #scr-nav{position:relative;}
 #map{flex:1;min-height:120px;z-index:1;}
@@ -90,9 +119,9 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 #navTop:not(.expanded) #nextRow{display:none !important;}
 #nextRow{flex-basis:100%;font-size:14px;font-weight:600;background:rgba(0,0,0,.25);border-radius:8px;padding:5px 9px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #navTop .dest{flex:1;min-width:0;}
-#navTop .street{font-size:24px;font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#navTop .street{font-size:22px;font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.3px;}
 #navTop .meta{font-size:15px;opacity:.85;}
-#navTop .dist{font-size:26px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;}
+#navTop .dist{font-size:26px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;font-family:var(--font-mono);}
 #navTop .dist small{display:block;font-size:13px;color:#fff;opacity:.8;font-weight:400;}
 #navBottom{flex:0 0 auto;background:var(--card);padding:6px 10px calc(env(safe-area-inset-bottom) + 2px);display:flex;gap:8px;z-index:500;box-shadow:0 -3px 14px rgba(0,0,0,.10);border-top:1px solid var(--border);}
 #navBottom .btn{flex-direction:column;gap:2px;font-size:13px;font-weight:800;padding:7px 4px;line-height:1.1;border-radius:13px;box-shadow:none;}
@@ -117,7 +146,7 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 .panel.open{display:flex;flex-direction:column;justify-content:flex-end;}
 .panel.open{animation:fadeIn .18s ease;}
 @keyframes fadeIn{from{background:rgba(0,0,0,0);}to{background:rgba(0,0,0,.45);}}
-.panel .sheet{position:relative;background:var(--card);border-radius:var(--radius-lg) var(--radius-lg) 0 0;max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -8px 26px rgba(33,22,10,.22);animation:slideUp .24s cubic-bezier(.22,.61,.36,1);}
+.panel .sheet{position:relative;background:var(--card);border-radius:var(--radius-lg) var(--radius-lg) 0 0;border-top:2px solid var(--ink);max-height:88%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -8px 26px rgba(33,22,10,.22);animation:slideUp .24s cubic-bezier(.22,.61,.36,1);}
 @keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
 /* Zacht sluiten: paneel glijdt omlaag en de achtergrond vervaagt */
 .panel.closing{animation:fadeOut .19s ease forwards;}
@@ -128,12 +157,12 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 #arrivePop,#notesPop{animation:popIn .22s cubic-bezier(.34,1.56,.64,1);}
 @keyframes popIn{from{opacity:0;transform:translate(-50%,-50%) scale(.86);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
 .panel .sheet::before{content:'';width:42px;height:5px;border-radius:99px;background:var(--border);position:absolute;top:9px;left:50%;transform:translateX(-50%);}
-.sheet h2{margin:0;padding:22px 18px 14px;font-size:20px;font-weight:800;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;letter-spacing:-.02em;}
+.sheet h2{margin:0;padding:22px 18px 14px;font-size:17px;font-weight:800;border-bottom:1.5px solid var(--ink);display:flex;justify-content:space-between;align-items:center;letter-spacing:1px;text-transform:uppercase;}
 .sheet h2 .x{background:var(--bg);border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-soft);padding:0;}
 .sheet h2 .x .lic{width:20px;height:20px;}
 .sheet .body{overflow-y:auto;padding:12px 16px;}
 .stop-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid #eef1f5;cursor:pointer;}
-.stop-row .num{flex:0 0 38px;height:38px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;}
+.stop-row .num{flex:0 0 38px;height:38px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;font-family:var(--font-mono);border:1.5px solid var(--ink);}
 .stop-row.done .num{background:var(--green);}
 .stop-row.skipped .num{background:var(--grey);}
 .stop-row.current .num{background:var(--accent);color:#10141a;}
@@ -142,12 +171,12 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 .stop-row .a1{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .stop-row.done .a1, .stop-row.skipped .a1{text-decoration:line-through;color:#7c8590;}
 .stop-row .a2{font-size:13px;color:var(--text-soft);}
-.stop-row .eta{font-size:15px;font-weight:700;color:var(--blue);white-space:nowrap;}
+.stop-row .eta{font-size:15px;font-weight:700;color:var(--blue);white-space:nowrap;font-family:var(--font-mono);}
 .menu-btns{display:flex;flex-direction:column;gap:10px;padding:6px 16px 16px;}
 .setrow{display:flex;justify-content:space-between;align-items:center;padding:15px 4px;border-bottom:1px solid var(--border);font-size:17px;}
 .setrow:last-child{border-bottom:none;}
 .setrow input[type=range]{width:46%;}
-.setrow .switch{width:58px;height:34px;border-radius:17px;background:#c8d0da;position:relative;cursor:pointer;border:none;}
+.setrow .switch{width:58px;height:34px;border-radius:17px;background:#c8d0da;position:relative;cursor:pointer;border:1.5px solid var(--ink);}
 .setrow .switch.on{background:var(--green);}
 .setrow .switch::after{content:'';position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;background:#fff;transition:left .15s;}
 .setrow .switch.on::after{left:27px;}
@@ -197,18 +226,12 @@ input.txt:focus,select.txt:focus{outline:none;border-color:var(--blue);}
 .note-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff6d00;margin-left:5px;vertical-align:middle;}
 #speedBox{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);z-index:500;display:none;flex-direction:column;align-items:center;gap:6px;}
 #limitSign{display:none;width:62px;height:62px;border-radius:50%;background:#fff;border:7px solid #d63b2f;color:#10141a;font-size:26px;font-weight:900;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);}
-/* Ongedaan-maken toast: verschijnt kort na afronden/overslaan van een stop,
-   zodat een misklik tijdens het rijden zo weer recht te zetten is. */
-#undoToast{display:none;position:absolute;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom) + 78px);z-index:900;background:#211c17;color:#fff;border-radius:var(--radius-sm);padding:12px 8px 12px 16px;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.3);animation:popIn .22s cubic-bezier(.34,1.56,.64,1);}
-#undoToast.show{display:flex;}
-#undoToast span{font-size:14px;font-weight:600;flex:1;min-width:0;}
-#undoToast button{background:rgba(255,255,255,.16);color:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:800;padding:9px 12px;cursor:pointer;white-space:nowrap;}
 #speedNow{background:#fff;border-radius:14px;padding:6px 12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:62px;cursor:pointer;}
-#speedNow .v{font-size:26px;font-weight:900;line-height:1;}
+#speedNow .v{font-size:26px;font-weight:900;line-height:1;font-family:var(--font-mono);}
 #speedNow .u{font-size:11px;color:var(--text-soft);font-weight:700;}
 #speedNow.over .v{color:var(--red);}
 /* Snelheidsgrafiek-paneel */
-#spdGraphReadout{text-align:center;font-size:16px;font-weight:800;color:var(--text);min-height:22px;margin-bottom:8px;}
+#spdGraphReadout{text-align:center;font-size:16px;font-weight:800;color:var(--text);min-height:22px;margin-bottom:8px;font-family:var(--font-mono);}
 #spdGraphWrap{position:relative;touch-action:none;background:var(--bg);border-radius:14px;padding:6px;}
 #spdGraphSvg{width:100%;height:140px;display:block;}
 #accWarn{position:absolute;left:0;right:0;z-index:515;background:var(--accent);color:#10141a;font-size:15px;font-weight:700;padding:9px 14px;display:none;}
@@ -299,6 +322,7 @@ body.dark .addsr:active{background:#0f1520;}
       <span id="dropArt"><svg viewBox="0 0 512 512"><ellipse cx="172" cy="448" rx="52" ry="13" fill="#E0AC00"/><ellipse cx="392" cy="294" rx="34" ry="9" fill="#E0AC00"/><path d="M 200 430 C 300 430 250 330 330 320 C 410 310 350 300 388 286" stroke="#D40511" stroke-width="22" fill="none" stroke-linecap="round"/><path d="M 172 250 c -50 0 -84 38 -84 82 c 0 56 64 84 84 112 c 20 -28 84 -56 84 -112 c 0 -44 -34 -82 -84 -82 z" fill="#D40511"/><circle cx="172" cy="330" r="32" fill="#FFCC00"/><path d="M 392 188 c -28 0 -47 21 -47 46 c 0 31 36 47 47 63 c 11 -16 47 -32 47 -63 c 0 -25 -19 -46 -47 -46 z" fill="#D40511"/><circle cx="392" cy="232" r="17" fill="#FFCC00"/></svg></span>Tik hier om je PDF-planning te kiezen<br><small style="font-size:14px;color:var(--text-soft)">DHL laadlijst met één of meer ritten</small>
     </div>
     <input type="file" id="file" accept="application/pdf" style="display:none">
+    <div id="factTicket"></div>
     <div id="resumeCard" class="card" style="display:none">
       <div style="font-size:17px;font-weight:700;margin-bottom:10px">Vorige rit verdergaan?</div>
       <div id="resumeInfo" style="font-size:15px;color:var(--text-soft);margin-bottom:12px"></div>
@@ -327,6 +351,19 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="loadmsg">Adressen opzoeken...</div>
     </div>
     <div id="geoWarn" class="card" style="display:none;border-left:6px solid var(--red)"></div>
+  </div>
+</div>
+
+<!-- SCHERM 3B: RIT-OVERZICHT (voor het starten) -->
+<div id="scr-preview" class="screen">
+  <header class="bar">Rit-overzicht<span class="sub" id="previewSub"></span></header>
+  <div class="content">
+    <div id="previewMap"></div>
+    <div id="previewStats"></div>
+    <div id="previewWarn" class="card" style="display:none;border-left:6px solid var(--red)"></div>
+    <div id="previewSpacer"></div>
+    <button class="btn green" onclick="startNavigationFromPreview()"><svg class="lic" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>Start rit</button>
+    <button class="btn grey" style="margin-top:10px" onclick="show('scr-rides')">← Andere rit kiezen</button>
   </div>
 </div>
 
@@ -361,7 +398,6 @@ body.dark .addsr:active{background:#0f1520;}
     <button class="nX" onclick="moreInfoNotesPop()" style="background:#ff6d00;margin-bottom:8px">Meer informatie</button>
     <button class="nX" id="notesBegrepen" onclick="hideNotesPop()">Begrepen<div id="notesProgBar" style="position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,.25);pointer-events:none;transition:width linear;width:100%"></div></button>
   </div>
-  <div id="undoToast"><span id="undoToastMsg"></span><button onclick="undoLastAction()">Ongedaan maken</button></div>
   <div id="map"></div>
   <button class="fab" id="fabZoomIn" onclick="fabZoom(1)">＋</button>
   <button class="fab" id="fabZoomOut" onclick="fabZoom(-1)">－</button>
@@ -465,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 35</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 36</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -599,6 +635,7 @@ let state = {
   routeDist: 0
 };
 let map = null, gpsMarker = null, stopMarkers = [], hnrLayer = null;
+let previewMap = null, previewMarkers = [];
 let watchId = null, lastPos = null, lastHeading = null, wakeLock = null;
 let trackMode = 'heading'; // 'heading' | 'north' | 'free'
 // Bearing-smoothing: low-pass filter op hoek (voorkomt schokkerige kaartrotatie)
@@ -659,6 +696,43 @@ function groupRows(items) {
   for (const r of rows) r.items.sort((a, b) => a.x - b.x);
   return rows.map(r => r.items.map(i => i.str.trim()).filter(Boolean));
 }
+/* ---------- FEITJE VAN DE DAG ----------
+   Puur decoratief tintje op het startscherm — wisselt automatisch per
+   kalenderdag, volledig client-side (geen netwerk nodig, werkt dus ook
+   offline meteen goed). */
+const DAILY_FACTS = [
+  'DHL komt van de achternamen Dalsey, Hillblom en Lynn — de drie oprichters die in 1969 in San Francisco begonnen met documenten tussen de VS en Hawaï vliegen.',
+  'Een gemiddelde bezorger in Nederland loopt en rijdt tijdens een dienst vaak meer dan 15.000 stappen bij elkaar op — zonder dat het voelt als sporten.',
+  'Het bruine kleurenpalet van sommige bezorgdiensten is bewust gekozen omdat het minder snel vuil oogt op een wagenpark dat de hele dag buiten staat.',
+  'Pakketbezorging bestond al in het oude Perzië: rond 500 v.Chr. reden koeriers via een estafettesysteem van postpunten om berichten razendsnel te verspreiden.',
+  'De term "last mile" (laatste kilometer) beschrijft het duurste en lastigste deel van de hele bezorgketen — precies het stuk dat jij dagelijks rijdt.',
+  'Nederland heeft een van de dichtste postcode-stelsels ter wereld: elke postcode dekt gemiddeld maar een handvol adressen, ideaal voor precieze navigatie.',
+  'Op de drukste bezorgdag van het jaar (meestal net na Sinterklaas of in de decemberweken) verdubbelt het pakketvolume in Nederland ten opzichte van een gewone week.',
+  'Bezorgbusjes met elektrische aandrijving zijn in de stad vaak sneller van deur tot deur, puur omdat optrekken en afremmen in de stop-and-go bezorging efficiënter verloopt.',
+  'Het woord "pakket" komt van het Franse "paquet", zelf weer afgeleid van het oudere "pack" — al eeuwenlang hetzelfde idee: spullen samen inpakken om te vervoeren.',
+  'Een goed geplande route kan het verschil maken tussen 60 en 90 stops op een dag — vandaar dat kleine optimalisaties in de volgorde zoveel schelen.',
+  'De eerste postzegel ter wereld, de Britse "Penny Black" uit 1840, maakte vooruitbetaalde bezorging voor het eerst mogelijk voor gewone mensen.',
+  'Chauffeurs die hun spiegels en camera vóór vertrek instellen besparen gemiddeld enkele seconden per stop op het hele traject bij elkaar — dat tikt aan.',
+  'In grote delen van Nederland is de bezorgdichtheid per vierkante kilometer hoger dan in bijna elk ander EU-land, dankzij de compacte steden en dorpen.',
+  'Het typische bezorgvoertuig legt op een drukke dag vaak meer haltes af dan een gemiddelde taxichauffeur ritten maakt in een hele week.',
+  'Barcodes op pakketten zijn ooit ontworpen naar het idee van de streepjescode op boodschappen — pas in de jaren 70 overgenomen door de vervoerswereld.',
+  'Rechtsaf slaan kost gemiddeld minder tijd en brandstof dan linksaf — een klein gegeven waar sommige routeplanners bewust rekening mee houden.',
+  'Nederland telt duizenden kilometers aan fietspaden die bezorgbusjes soms slimmer kunnen mijden dan de hoofdweg, puur omdat kruisingen daar drukker zijn.',
+  'Het gemiddelde pakket in Nederland reist tegenwoordig korter onderweg dan tien jaar geleden — vooral dankzij lokalere sorteercentra dichter bij de bezorger.',
+  'De uitdrukking "de laatste loodjes wegen het zwaarst" is toevallig ook letterlijk waar in bezorgland: de laatste paar stops kosten relatief de meeste tijd.',
+  'Een pakketje dat je vandaag bezorgt, heeft gemiddeld al drie tot vier verschillende vervoersmiddelen achter de rug: vliegtuig, vrachtwagen, sorteerband en tot slot jouw bus.',
+];
+function renderDailyFact() {
+  const el = $('factTicket');
+  if (!el) return;
+  const dayIdx = Math.floor(Date.now() / 86400000);
+  const fact = DAILY_FACTS[dayIdx % DAILY_FACTS.length];
+  const dateStr = new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  el.innerHTML = `<div class="ftLabel">${ic('package','sm')} Feitje van de dag</div>` +
+    `<div class="ftText">${fact}</div>` +
+    `<div class="ftEdge"><span>${dateStr}</span><span>#${String(dayIdx % 999).padStart(3, '0')}</span></div>`;
+}
+
 const PC_RE = /^\d{4}[A-Z]{2}$/;
 function parseLaadlijst(pagesItems) {
   const rides = []; let ride = null, pending = null;
@@ -813,32 +887,78 @@ async function osrmTable(points) {
 }
 
 /* ---------- KLEINE OPTIMALISATIE ----------
-   Behoudt de PDF-volgorde als basis (tijdslots leidend).
-   Hill-climbing: verplaats/wissel een stop maximaal 3 posities,
-   alleen accepteren als de totale rijtijd aantoonbaar daalt.   */
-function tourDur(order, M) {
+   Twee losse stappen, allebei lokaal en klein — de DHL-tijdslot-volgorde
+   blijft de basis, dit fixt alleen aantoonbare omrij-fouten:
+
+   1) Tussengevoegde .1/.2/.3-pakketten (zie parseLaadlijst) hebben geen
+      eigen tijdslot en staan puur toevallig op hun PDF-plek. Die worden
+      losgekoppeld en elders in `rebuildRoute` opnieuw ingevoegd op de
+      geografisch beste plek (bestInsertIndex) — een 0.1 mag best naast
+      een 45.1 belanden.
+
+   2) Hill-climbing op de resterende (wél getijdslotte) stops: verplaats of
+      wissel een stop max. 3 posities t.o.v. de oorspronkelijke volgorde,
+      alleen accepteren als de rijtijd aantoonbaar daalt. Nieuw t.o.v.
+      eerder: O(1) positie-opzoek i.p.v. indexOf per kandidaat (was traag
+      bij grotere ritten — vermoedelijk de reden dat dit sinds build 5 in de
+      praktijk nooit meer iets leek te doen), ook wissel-zetten (niet alleen
+      verplaatsen), en een voorkeur voor de linkerkant: in Nederland zit de
+      bestuurder links, dus een stop die zonder om te hoeven rijden "links"
+      van de rijlijn ligt is zo'n 12s sneller te doen dan eentje rechts. Die
+      voorkeur wordt als virtuele tijd meegewogen, bepaald met een
+      kruisproduct t.o.v. de rechte lijn tussen de buren van elke stop. */
+const LEFT_BONUS_SEC = 12;   // virtuele tijdwinst voor een linkerkant-stop
+const LEFT_BONUS_M = 90;     // zelfde omgerekend naar meters (voor bestInsertIndex, ±12s bij bezorgsnelheid)
+
+function isFreeSeq(s) {
+  // .1/.2/.3-pakketten: geen eigen tijdslot, dus vrij te verplaatsen
+  const base = s.seqs ? s.seqs[0] : s.seq;
+  return typeof base === 'number' && !Number.isInteger(base);
+}
+// Kruisproduct van (prev->next) met (prev->cur): >0 = cur ligt links van die
+// lijn (moet naar links uitwijken om 'm te bereiken = linkerkant bestuurder)
+function sideSign(prev, cur, next) {
+  const kx = Math.cos(cur.lat * Math.PI / 180);
+  const ax = prev.lon * kx, ay = prev.lat, bx = next.lon * kx, by = next.lat;
+  const px = cur.lon * kx, py = cur.lat;
+  return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+}
+function tourCost(order, M, pts) {
   let t = 0;
   for (let i = 0; i < order.length - 1; i++) t += M[order[i]][order[i + 1]];
+  for (let i = 1; i < order.length - 1; i++) {
+    if (sideSign(pts[order[i - 1]], pts[order[i]], pts[order[i + 1]]) < 0) t += LEFT_BONUS_SEC;
+  }
   return t;
 }
-function optimizeOrder(n, M, maxShift = 3) {
+function optimizeOrder(n, M, pts, maxShift = 3) {
   let order = Array.from({ length: n }, (_, i) => i);
-  const base = Array.from({ length: n }, (_, i) => i); // oorspronkelijke positie
-  let best = tourDur(order, M), improved = true, guard = 0;
+  let best = tourCost(order, M, pts), improved = true, guard = 0;
+  const posOf = cand => { const p = new Array(n); cand.forEach((v, idx) => p[v] = idx); return p; };
+  const withinShift = p => { for (let k = 1; k < n; k++) if (Math.abs(p[k] - k) > maxShift) return false; return true; };
   while (improved && guard++ < 40) {
     improved = false;
     for (let i = 1; i < n; i++) { // index 0 = startpunt (huidige positie), blijft vast
-      for (let j = Math.max(1, i - maxShift); j <= Math.min(n - 1, i + maxShift); j++) {
+      const lo = Math.max(1, i - maxShift), hi = Math.min(n - 1, i + maxShift);
+      for (let j = lo; j <= hi; j++) {
         if (i === j) continue;
-        const cand = order.slice();
+        // 1) verplaatsen
+        let cand = order.slice();
         const [v] = cand.splice(i, 1);
         cand.splice(j, 0, v);
-        // harde grens: niemand mag > maxShift van zijn óórspronkelijke plek
-        let ok = true;
-        for (let k = 1; k < n; k++) if (Math.abs(cand.indexOf(base[k]) - k) > maxShift) { ok = false; break; }
-        if (!ok) continue;
-        const d = tourDur(cand, M);
-        if (d < best - 5) { order = cand; best = d; improved = true; }
+        let p = posOf(cand);
+        if (withinShift(p)) {
+          const d = tourCost(cand, M, pts);
+          if (d < best - 3) { order = cand; best = d; improved = true; continue; }
+        }
+        // 2) wisselen
+        cand = order.slice();
+        [cand[i], cand[j]] = [cand[j], cand[i]];
+        p = posOf(cand);
+        if (withinShift(p)) {
+          const d = tourCost(cand, M, pts);
+          if (d < best - 3) { order = cand; best = d; improved = true; }
+        }
       }
     }
   }
@@ -849,7 +969,7 @@ function optimizeOrder(n, M, maxShift = 3) {
 /* ---------- ROUTER: elk scherm en paneel een eigen adres ----------
    Zo werken de terugknop en de terug-swipe op iOS gewoon:
    #/start -> #/ritten -> #/route -> #/route/stops enz.            */
-const ROUTES = { 'scr-upload': 'start', 'scr-rides': 'ritten', 'scr-loading': 'laden', 'scr-nav': 'route' };
+const ROUTES = { 'scr-upload': 'start', 'scr-rides': 'ritten', 'scr-loading': 'laden', 'scr-preview': 'overzicht', 'scr-nav': 'route' };
 const PANELS = { 'panel-stops': 'stops', 'panel-stopmenu': 'stopmenu', 'panel-addstop': 'nieuwe-stop', 'panel-notes': 'notities', 'panel-settings': 'instellingen', 'panel-speedgraph': 'snelheid' };
 let navInternal = false;
 
@@ -861,6 +981,7 @@ function applyScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
   if (id === 'scr-nav' && map) setTimeout(() => map.resize(), 150);
+  if (id === 'scr-preview' && previewMap) setTimeout(() => previewMap.resize(), 150);
 }
 function show(id) {
   applyScreen(id);
@@ -903,6 +1024,7 @@ window.addEventListener('popstate', e => {
   // valideer dat het scherm nog data heeft
   if (target === 'scr-rides' && !state.rides.length) target = 'scr-upload';
   if (target === 'scr-loading') target = state.rides.length ? 'scr-rides' : 'scr-upload';
+  if (target === 'scr-preview' && !state.stops.length) target = 'scr-upload';
   if (target === 'scr-nav' && !state.stops.length) target = 'scr-upload';
   applyScreen(target);
   if (e.state && e.state.panel) {
@@ -1025,6 +1147,71 @@ async function chooseRide(i) {
   await rebuildRoute(true);
   $('loadbar').style.width = '100%';
   persist();
+  showRidePreview();
+}
+
+/* ---------- RIT-OVERZICHT (voor het starten) ---------- */
+function showRidePreview() {
+  const ride = state.rides[state.rideIdx];
+  const real = state.stops.filter(s => s.lat && !s.isDepot);
+  const numStops = real.length;
+  const numPkgs = real.reduce((n, s) => n + (s.seqs ? s.seqs.length : 1), 0);
+  const km = (state.routeDist / 1000).toFixed(1).replace('.', ',');
+  const totalSec = state.legInfo.length ? state.legInfo[state.legInfo.length - 1].cumDur : 0;
+  const h = Math.floor(totalSec / 3600), m = Math.round((totalSec % 3600) / 60);
+  const durStr = totalSec ? (h > 0 ? `${h}u ${m}min` : `${m} min`) : '—';
+  $('previewSub').textContent = `Rit ${ride.rit} · ${ride.bezorger}`;
+  $('previewStats').innerHTML =
+    `<div class="pstat"><div class="pv">${numStops}</div><div class="pl">Stops</div></div>` +
+    `<div class="pstat"><div class="pv">${numPkgs}</div><div class="pl">Pakketten</div></div>` +
+    `<div class="pstat"><div class="pv">${km}</div><div class="pl">Km</div></div>` +
+    `<div class="pstat"><div class="pv">${durStr}</div><div class="pl">Rijtijd</div></div>` +
+    `<div class="pstat"><div class="pv">${ride.datum || '—'}</div><div class="pl">Datum</div></div>` +
+    `<div class="pstat"><div class="pv">${ride.bezorgerId || '—'}</div><div class="pl">Bezorger</div></div>`;
+  const failed = state.stops.filter(s => !s.lat && !s.isDepot);
+  if (failed.length) {
+    $('previewWarn').style.display = 'block';
+    $('previewWarn').innerHTML = `<b>${ic('alert', 'sm')} ${failed.length} adres(sen) niet gevonden</b><br><small>Deze stops staan wel in de lijst, maar zonder kaartpositie.</small>`;
+  } else {
+    $('previewWarn').style.display = 'none';
+  }
+  show('scr-preview');
+  setTimeout(initPreviewMap, 60);
+}
+
+function initPreviewMap() {
+  const withPos = state.stops.filter(s => s.lat);
+  if (!withPos.length) return;
+  if (!previewMap) {
+    previewMap = new maplibregl.Map({
+      container: 'previewMap',
+      style: 'https://tiles.openfreemap.org/styles/bright',
+      center: [6.13, 52.35], zoom: 12, attributionControl: false, interactive: true
+    });
+  }
+  previewMarkers.forEach(m => m.remove()); previewMarkers = [];
+  const drawIt = () => {
+    if (previewMap.getSource('previewroute')) { previewMap.removeLayer('previewroute'); previewMap.removeSource('previewroute'); }
+    const geom = state.fullRouteGeom;
+    if (geom) {
+      previewMap.addSource('previewroute', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: geom } });
+      previewMap.addLayer({ id: 'previewroute', type: 'line', source: 'previewroute', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#d40511', 'line-width': 5, 'line-opacity': 0.85 } });
+    }
+    withPos.forEach(s => {
+      const el = document.createElement('div');
+      const size = s.isDepot ? 22 : 14;
+      el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);background:${s.isDepot ? '#10141a' : '#d40511'};`;
+      const m = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lon, s.lat]).addTo(previewMap);
+      previewMarkers.push(m);
+    });
+    const lons = withPos.map(s => s.lon), lats = withPos.map(s => s.lat);
+    previewMap.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 34, maxZoom: 15, duration: 0 });
+  };
+  if (previewMap.loaded()) drawIt(); else previewMap.once('load', drawIt);
+  setTimeout(() => previewMap.resize(), 50);
+}
+
+function startNavigationFromPreview() {
   rideStartTime = Date.now(); rideCompleteShown = false;
   initMap();
   show('scr-nav');
@@ -1039,31 +1226,40 @@ async function rebuildRoute(allowOptimize) {
   const pend = pendingStops();
   state.routeGeom = null; state.legInfo = []; state.optSaving = 0; state.routeDist = 0;
   if (!pend.length) { drawRoute(); return; }
-  const start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
-  const pts = [...start, ...pend];
+  const doOptimize = allowOptimize && state.settings.optimize;
   try {
-    // kleine optimalisatie (alleen met startpunt + instelling aan)
-    if (allowOptimize && state.settings.optimize && pend.length >= 3 && pend.length <= 90) {
+    // Stap 1: tussengevoegde .1/.2-pakketten loskoppelen van hun toevallige
+    // PDF-plek en op de geografisch beste plek herinvoegen (geen tijdslot).
+    if (doOptimize) repositionFreeStops();
+    let start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
+    let pts = [...start, ...pendingStops()];
+    // Stap 2: lokale hill-climb op de resterende (wél getijdslotte) stops
+    if (doOptimize && pts.length - start.length >= 3 && pts.length <= 140) {
       try {
         const M = await osrmTable(pts);
         const n = pts.length;
-        const before = tourDur(Array.from({ length: n }, (_, k) => k), M);
-        const { order, dur } = optimizeOrder(n, M, 3);
-        if (before - dur > 45) { // alleen toepassen als het echt tijd scheelt
+        const identity = Array.from({ length: n }, (_, k) => k);
+        const before = tourCost(identity, M, pts);
+        const { order, dur } = optimizeOrder(n, M, pts, 3);
+        if (before - dur > 45) { // alleen toepassen als het echt tijd (of linkerkant-winst) scheelt
           state.optSaving = Math.round((before - dur) / 60);
+          const pendSnapshot = pendingStops();
           const offset = start.length;
-          const newPend = order.filter(ix => ix >= offset).map(ix => pend[ix - offset]);
-          // herschik state.stops: pending-stops in nieuwe volgorde, rest blijft staan
+          const newPend = order.filter(ix => ix >= offset).map(ix => pendSnapshot[ix - offset]);
           let pi = 0;
           state.stops = state.stops.map(s => (s.status === 'pending' && s.lat) ? newPend[pi++] : s);
         }
       } catch (e) { /* optimalisatie is optioneel */ }
     }
     const pend2 = pendingStops();
-    const pts2 = [...(lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : []), ...pend2];
-    if (pts2.length >= 2) {
-      const route = await osrmRoute(pts2, 'false'); // alleen tijden, geen geometrie
+    start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
+    pts = [...start, ...pend2];
+    if (pts.length >= 2) {
+      // Volledige geometrie alleen ophalen bij een echte (her)planning: nodig
+      // voor het rit-overzicht (kaart) en de links/rechts-badge per stop.
+      const route = await osrmRoute(pts, allowOptimize ? 'full' : 'false');
       state.routeDist = route.distance;
+      if (allowOptimize && route.geometry) state.fullRouteGeom = route.geometry;
       // cumulatieve rijtijd per pending stop
       // met GPS-start: leg 0 = huidige positie -> stop 0
       // zonder GPS-start: stop 0 is het routebegin (cum 0), leg i-1 = stop i-1 -> stop i
@@ -1074,6 +1270,13 @@ async function rebuildRoute(allowOptimize) {
         const legIdx = lastPos ? i : i - 1;
         if (legIdx >= 0 && legs[legIdx]) cum += legs[legIdx].duration;
         state.legInfo.push({ stop: pend2[i], cumDur: cum });
+      }
+      // Links/rechts-badge per stop, o.b.v. de uiteindelijke volgorde
+      // (dezelfde kruisproduct-methode als de optimalisatie zelf gebruikt)
+      for (let i = 0; i < pend2.length; i++) {
+        const prev = i > 0 ? pend2[i - 1] : (start[0] || null);
+        const next = pend2[i + 1];
+        pend2[i].approachSide = (prev && next) ? (sideSign(prev, pend2[i], next) < 0 ? 'right' : 'left') : null;
       }
     }
   } catch (e) {
@@ -1846,13 +2049,26 @@ function bestInsertIndex(stop) {
     const prev = i > 0 ? pend[i - 1] : (lastPos || null);
     const next = i < pend.length ? pend[i] : null;
     let c = 0;
-    if (prev && next) c = hav(prev, stop) + hav(stop, next) - hav(prev, next);
+    if (prev && next) {
+      c = hav(prev, stop) + hav(stop, next) - hav(prev, next);
+      // lichte voorkeur voor een invoegpunt waar de stop links van de rijlijn ligt
+      if (sideSign(prev, stop, next) < 0) c += LEFT_BONUS_M;
+    }
     else if (prev) c = hav(prev, stop);
     else if (next) c = hav(stop, next);
     if (c < bestC) { bestC = c; bestI = i; }
   }
   if (bestI < pend.length) return state.stops.indexOf(pend[bestI]);
   return state.stops.indexOf(pend[pend.length - 1]) + 1;
+}
+// Tussengevoegde .1/.2-pakketten (geen eigen tijdslot) loskoppelen en op de
+// geografisch beste plek terugzetten — precies zoals de 900-serie hierboven.
+function repositionFreeStops() {
+  const free = state.stops.filter(s => s.status === 'pending' && s.lat && isFreeSeq(s));
+  if (!free.length) return 0;
+  state.stops = state.stops.filter(s => !free.includes(s));
+  for (const s of free) state.stops.splice(bestInsertIndex(s), 0, s);
+  return free.length;
 }
 // tussennummer: komt hij tussen 15 en 16, dan wordt het 15.1 (daarna 15.2 enz.)
 function dottedLabel(insertIdx) {
@@ -2193,43 +2409,9 @@ function beep() {
 }
 
 function arrive(stop) {
-  const isRideEnd = stop.isDepot;
   stop.status = 'done';
   beep();
   afterStopChange(false);
-  // Geen undo-aanbod bij het depot: dat rondt de hele rit af, niets om terug te draaien
-  if (!isRideEnd) showUndoToast(stop, 'pending', 'auto afgevinkt (GPS)');
-}
-
-/* ---------- ONGEDAAN MAKEN ----------
-   Eén misklik tijdens het rijden moet je niet je route kosten. Elke keer dat
-   een stop op "voltooid" of "overgeslagen" gaat (automatisch via GPS, met de
-   knoppen, of via het stopmenu) verschijnt hier kort een toast om het terug
-   te draaien. Alleen de laatste actie is ongedaan te maken (net als Gmail). */
-let lastAction = null, undoToastTimer = null;
-function markStop(stop, status, label) {
-  if (!stop) return;
-  const prevStatus = stop.status;
-  stop.status = status;
-  afterStopChange(true);
-  showUndoToast(stop, prevStatus, label);
-}
-function showUndoToast(stop, prevStatus, label) {
-  lastAction = { stop, prevStatus };
-  clearTimeout(undoToastTimer);
-  const verb = label || (stop.status === 'done' ? 'Voltooid' : 'Overgeslagen');
-  $('undoToastMsg').textContent = `${verb}: ${stop.street} ${stop.huisnr}`;
-  $('undoToast').classList.add('show');
-  undoToastTimer = setTimeout(hideUndoToast, 6000);
-}
-function hideUndoToast() { $('undoToast').classList.remove('show'); lastAction = null; }
-function undoLastAction() {
-  if (!lastAction) return;
-  const { stop, prevStatus } = lastAction;
-  stop.status = prevStatus;
-  hideUndoToast();
-  afterStopChange(true);
-  if (navigator.vibrate) navigator.vibrate(12);
 }
 
 /* ---------- NAVIGATIEKAART (bovenbalk) ---------- */
@@ -2318,7 +2500,7 @@ function showRideComplete() {
   const eindTijd = new Date().toTimeString().slice(0, 5);
   const el = $('rideCompleteScreen');
   if (!el) return;
-  const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:12px;padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1">${val}</div><div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px">${lbl}</div></div>`;
+  const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:8px;border:1.5px solid rgba(255,255,255,.4);padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1;font-family:var(--font-mono)">${val}</div><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.8);margin-top:5px">${lbl}</div></div>`;
   el.innerHTML =
     '<div class="rcInner" style="padding:calc(env(safe-area-inset-top)+24px) 20px calc(env(safe-area-inset-bottom)+30px);max-width:480px;margin:0 auto;text-align:center">' +
     '<div style="margin-bottom:10px;color:#fff">' + ic('party','big') + '</div>' +
@@ -2350,8 +2532,8 @@ async function afterStopChange(reroute) {
   updateNavCard();
   renderStopList();
 }
-function completeCurrent() { const c = currentStop(); if (c) markStop(c, 'done'); }
-function skipCurrent() { const c = currentStop(); if (c) markStop(c, 'skipped'); }
+function completeCurrent() { const c = currentStop(); if (c) { c.status = 'done'; afterStopChange(true); } }
+function skipCurrent() { const c = currentStop(); if (c) { c.status = 'skipped'; afterStopChange(true); } }
 function endRide() {
   if (!confirm('Rit beëindigen? De voortgang wordt gewist.')) return;
   localStorage.removeItem(LS);
@@ -2475,8 +2657,8 @@ function openStopMenu(i) {
     b.appendChild(btn);
   };
   if (s.status === 'pending') {
-    mk(ic('check') + ' Markeer als voltooid', 'green', () => markStop(s, 'done'));
-    mk(ic('skip') + ' Overslaan', 'orange', () => markStop(s, 'skipped'));
+    mk(ic('check') + ' Markeer als voltooid', 'green', () => { s.status = 'done'; afterStopChange(true); });
+    mk(ic('skip') + ' Overslaan', 'orange', () => { s.status = 'skipped'; afterStopChange(true); });
     mk(ic('target') + ' Maak dit de volgende stop', '', () => { moveToFront(i); });
     mk(ic('arrowUpShort') + ' Eén plek eerder', 'grey', () => { moveStop(i, -1); });
     mk(ic('arrowDownShort') + ' Eén plek later', 'grey', () => { moveStop(i, +1); });
@@ -2762,6 +2944,7 @@ function adminExport() {
   history.replaceState({ screen: 'scr-upload' }, '', '#/start');
   syncSettingsUI();
   initSpeedGraphScrub();
+  renderDailyFact();
   const saved = loadPersisted();
   if (saved && saved.stops && saved.stops.some(s => s.status === 'pending')) {
     const done = saved.stops.filter(s => s.status !== 'pending').length;
