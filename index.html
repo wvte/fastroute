@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 38: alle-huisnummers-laag toont nu al vanaf zoom 13 i.p.v. 15, en de cijfers zijn kleiner (7-11px i.p.v. 9-13px) zodat je ze eerder ziet zonder heel ver te hoeven inzoomen (04-08-2026) -->
+<!-- Build 39: batterijverbruik verlaagd — de GPS-animatieloop (smoothMarker) rendert de kaart niet meer 60x/s: gecapt op ~30fps tijdens het rijden, en op ~1x/s zodra je (bijna) stilstaat (bezorgstop), tot je écht meer dan anderhalve meter verplaatst bent. Interpolatie/voortgangsberekening blijft wel elk frame lopen, alleen het duurdere kaart-schrijfwerk (setData + easeTo) wordt overgeslagen (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 38</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 39</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -654,6 +654,9 @@ let interpFrom = null, interpTo = null, interpStart = 0, interpDur = 3000, inter
 let interpCur = null;              // laatst getoonde ruwe positie — volgende fix start hier (geen terugspringen)
 let dispHeading = null;            // gedempte getoonde koers (pijl + camera draaien samen)
 let snapBlend = 0, smLastTs = 0;   // zachte overgang route-lock aan/uit + frame-tijd
+// Render-throttle voor de accu: onthoudt wanneer/waar het laatst écht naar
+// de kaart geschreven is (zie smoothMarker()).
+let smRenderLastTs = 0, smLastRenderPos = null;
 function angDiff(a, b) { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
 
 /* Kalman-filter op ruwe GPS-fixes (klassieke gps-smoothing): elke fix wordt
@@ -1701,13 +1704,28 @@ function smoothMarker() {
   const hdgTarget = roadBearing != null ? roadBearing : lastHeading;
   if (hdgTarget != null) {
     dispHeading = dispHeading == null ? hdgTarget : lerpBearing(dispHeading, hdgTarget, 1 - Math.exp(-dtf * 5));
-    gpsMarker.setRotation(dispHeading);
   }
 
-  gpsMarker.setLngLat([dLon, dLat]);
-  drawRouteClipped(dLat, dLon);
-  updateCamera(dLat, dLon);
-  updateFixedPuck();
+  // Render-throttle voor de accu: de kaart 60x/s laten hertekenen (setData +
+  // easeTo, elk frame) is op een telefoon in een houder pure verspilling —
+  // het oog ziet geen verschil bij ~30fps in een auto. Sta je (bijna) stil,
+  // bijvoorbeeld tijdens een bezorgstop, dan wordt er zelfs nog maar zo'n
+  // 1x per seconde bijgewerkt, tot je écht weer meer dan ~1,5 m verplaatst
+  // bent. De interpolatie/voortgangsberekening hierboven blijft wel elk
+  // frame lopen zodat de getoonde positie bij het weer optrekken meteen
+  // weer klopt, alleen het duurdere kaart-schrijfwerk wordt overgeslagen.
+  const nowR = performance.now();
+  const nearlyStill = (spdEma || 0) < 0.4 && smLastRenderPos && hav(smLastRenderPos, { lat: dLat, lon: dLon }) < 1.5;
+  const minRenderDt = nearlyStill ? 900 : 33;
+  if (nowR - smRenderLastTs >= minRenderDt) {
+    smRenderLastTs = nowR;
+    smLastRenderPos = { lat: dLat, lon: dLon };
+    if (hdgTarget != null) gpsMarker.setRotation(dispHeading);
+    gpsMarker.setLngLat([dLon, dLat]);
+    drawRouteClipped(dLat, dLon);
+    updateCamera(dLat, dLon);
+    updateFixedPuck();
+  }
   interpRaf = requestAnimationFrame(smoothMarker);
 }
 
