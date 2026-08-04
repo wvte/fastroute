@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 36: volledig nieuwe "verzendlabel"-visuele stijl (mono-font, harde offset-shadows, barcode-decoratie, dagelijks wisselend feitje op het startscherm), undo-toast weer verwijderd, nieuw rit-overzichtscherm vóór het starten (stops/pakketten/km/rijtijd + minikaart met alle adressen + Start rit-knop), route-optimalisatie herschreven (hill-climb met O(1) positielookup, .1/.2-pakketten vrij herplaatsbaar los van hun PDF-volgorde, links-van-de-weg-stops krijgen een tijdsbonus t.o.v. rechts) (04-08-2026) -->
+<!-- Build 37: pakketvolgorde-waarschuwingen minder verwarrend gemaakt — de rode "out of order"-marker op de kaart staat nu alleen nog op het daadwerkelijk verplaatste .1/.2/.3- of 900-serie-pakket zelf (niet meer op elke stop erna), en de "niet nr X!"-hint verschijnt nog maar op de eerste stop die je tegenkomt terwijl dat pakket nog moet, niet meer bij elke tussenliggende stop tot het eindelijk gehaald is (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 36</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 37</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1213,6 +1213,7 @@ function initPreviewMap() {
 
 function startNavigationFromPreview() {
   rideStartTime = Date.now(); rideCompleteShown = false;
+  resetMpsWarnings();
   initMap();
   show('scr-nav');
   startGPS();
@@ -2182,13 +2183,32 @@ function minPendingSeq() { // laagste 'gewone' pakketnummer dat nog moet
   for (const s of state.stops) if (s.status === 'pending' && !s.steeg && !s.isDepot && nseq(s) < 900 && nseq(s) < m) m = nseq(s);
   return m;
 }
+// "Niet nr X!" hoort maar op ÉÉN stop te verschijnen per vooruitgeschoven
+// pakketnummer (bv. 26.1 dat verderop in de rit ligt) — namelijk de eerste
+// stop die je tegenkomt terwijl dat pakket nog moet. Zonder dit zie je 'm bij
+// élke tussenliggende stop tot dat pakket eindelijk gehaald is, wat
+// verwarrend is. We onthouden per mps-waarde welke stop 'm als eerste kreeg;
+// diezelfde stop mag 'm de hele tijd (onderweg + bij aankomst) laten zien,
+// latere stops met dezelfde mps niet meer. Bij een volgend pakket (bv.
+// daarna 26.2) mag het weer één keer opnieuw, voor de dan-eerste stop.
+let mpsWarnClaim = new Map();
+function resetMpsWarnings() { mpsWarnClaim = new Map(); }
+function mpsHintFor(mps, cur) {
+  if (mps === Infinity || !cur) return false;
+  let claim = mpsWarnClaim.get(mps);
+  if (!claim) { claim = cur; mpsWarnClaim.set(mps, cur); }
+  return claim === cur;
+}
+// Alleen de daadwerkelijk verplaatste pakketten zelf markeren (900-serie en
+// vrije .1/.2/.3-pakketten) — niet elke stop die toevallig van indexpositie
+// wisselt doordat zo'n pakket ergens tussen is geschoven. Anders licht bij
+// het verplaatsen van bv. 26.1 elke stop erna onterecht rood op.
 function outOfOrderSet() {
-  const pend = state.stops.filter(s => s.status === 'pending' && s.lat && nseq(s) !== Infinity && nseq(s) < 900 && !s.steeg && !s.isDepot);
-  const sorted = [...pend].sort((a, b) => nseq(a) - nseq(b));
   const set = new Set();
-  pend.forEach((s, i) => { if (sorted[i] !== s) set.add(s); });
-  // 900-serie altijd markeren: dat pakket ligt op een andere plek in de bus
-  for (const s of state.stops) if (s.status === 'pending' && s.lat && nseq(s) >= 900) set.add(s);
+  for (const s of state.stops) {
+    if (s.status !== 'pending' || !s.lat || s.steeg || s.isDepot) continue;
+    if (nseq(s) >= 900 || isFreeSeq(s)) set.add(s);
+  }
   return set;
 }
 function pkgLabel(s) {
@@ -2212,7 +2232,8 @@ function _doShowArrivePop(s) {
     $('arrivePop').classList.remove('warn');
   } else if (warn) {
     const mps = minPendingSeq();
-    $('apPkg').innerHTML = `${ic('alert')} PAK ${s.seqs ? 'PAKKETTEN' : 'PAKKET'}<br><b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? '<br><small>900-SERIE</small>' : ''}<br><small style="font-weight:400">${s.sender || ''}${mps !== Infinity ? '<br>Niet nr ' + mps + '!' : ''}</small>`;
+    const hint = mpsHintFor(mps, s) ? '<br>Niet nr ' + mps + '!' : '';
+    $('apPkg').innerHTML = `${ic('alert')} PAK ${s.seqs ? 'PAKKETTEN' : 'PAKKET'}<br><b>NR ${seqLabel(s)}</b>${nseq(s) >= 900 ? '<br><small>900-SERIE</small>' : ''}<br><small style="font-weight:400">${s.sender || ''}${hint}</small>`;
     $('arrivePop').classList.add('warn');
   } else if (s.afhaal) {
     $('apPkg').innerHTML = `${ic('pickup')} AFHAALOPDRACHT<br><small style="font-weight:400">Pakket meenemen van klant</small>`;
@@ -2296,9 +2317,10 @@ function updatePkgWarn() {
       html = `${ic('walk')} STEEG · PAK PAKKETTEN NR ${seqLabel(cur)} · hier ook: ${cur.steegOther}`;
       bg = 'var(--green)'; fg = '#fff';
     } else if (nseq(cur) !== Infinity && nseq(cur) !== mps) {
+      const hint = mpsHintFor(mps, cur);
       html = `${ic('package')} PAK ${cur.seqs ? 'PAKKETTEN' : 'PAKKET'} NR ${seqLabel(cur)}` +
         (nseq(cur) >= 900 ? ' (900-SERIE)' : '') + (cur.sender ? ` (${cur.sender})` : '') +
-        (mps !== Infinity ? ` — niet nr ${mps}` : '');
+        (hint ? ` — niet nr ${mps}` : '');
     } else if (cur.seqs) {
       html = `${ic('package')} ${cur.seqs.length} PAKKETTEN OP DIT ADRES · NR ${seqLabel(cur)}`;
       bg = 'var(--accent)'; fg = '#10141a';
@@ -2821,6 +2843,7 @@ function resumeRide() {
   state.rideIdx = 0;
   syncSettingsUI();
   rideStartTime = rideStartTime || Date.now(); rideCompleteShown = false;
+  resetMpsWarnings();
   initMap();
   show('scr-nav');
   startGPS();
