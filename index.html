@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 40: fix voor het vasthangen bij "Route berekenen..." — alle externe fetch-aanroepen (OSRM, PDOK, Nominatim, Overpass) hadden geen timeout, dus als de publieke OSRM-server bij een grote rit (tot 140 stops sinds build 36) traag was of niet antwoordde, bleef het scherm voor altijd hangen. Nieuwe fetchT()-helper breekt elke aanvraag na 6-20s netjes af, waarna de bestaande fallbacks het gewoon overnemen (04-08-2026) -->
+<!-- Build 41: fix voor hemelsbreed-navigeren + trage knoppen na build 40 — updateNavLine() en rebuildRoute() konden zichzelf overlappen (elke GPS-fix kon een nieuwe aanroep starten terwijl de vorige nog op een trage server wachtte), waardoor er steeds meer gelijktijdige OSRM-aanvragen om dezelfde paar verbindingen streden; elke extra aanvraag liep zo een grotere kans op de build-40 timeout, met een rechte lijn i.p.v. de weg tot gevolg. Nieuwe rebuildBusy/navLineBusy-vlaggen slaan een overlappende aanroep gewoon over i.p.v. 'm te laten opstapelen; timeouts voor de hoofdroute ook iets ruimer (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 40</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 41</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -879,7 +879,7 @@ function hav(a, b) {
 async function osrmRouteSnap(from, to) {
   // Gebruik grote snap-radius zodat GPS niet exact op de weg hoeft te staan
   const cs = `${from.lon.toFixed(6)},${from.lat.toFixed(6)};${to.lon.toFixed(6)},${to.lat.toFixed(6)}`;
-  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=true&radiuses=500;500`, 12000);
+  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=true&radiuses=500;500`, 16000);
   if (!r.ok) throw new Error('OSRM snap ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM snap: ' + j.code);
@@ -887,7 +887,7 @@ async function osrmRouteSnap(from, to) {
 }
 async function osrmRoute(points, overview = 'full', withSteps = false) {
   const cs = points.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`, 15000);
+  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`, 18000);
   if (!r.ok) throw new Error('OSRM ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM: ' + j.code);
@@ -1240,7 +1240,18 @@ function startNavigationFromPreview() {
 /* ---------- ROUTE OPBOUWEN ---------- */
 function pendingStops() { return state.stops.filter(s => s.status === 'pending' && s.lat); }
 
+// Beschermt tegen opeenstapelende route-aanvragen: als de gebruiker snel
+// meerdere stops afvinkt (of dat vaker doet omdat de app traag aanvoelt bij
+// een langzame server) kunnen meerdere rebuildRoute()-aanroepen anders
+// tegelijk OSRM-verzoeken sturen, die dan om de paar beschikbare
+// verbindingen naar dezelfde server moeten wachten — precies wat een trage
+// server nog trager maakt. Bij overlap slaan we 'm gewoon over; de lopende
+// aanroep werkt de route toch al bij op basis van de nieuwste stops.
+let rebuildBusy = false;
 async function rebuildRoute(allowOptimize) {
+  if (rebuildBusy) return;
+  rebuildBusy = true;
+  try {
   const pend = pendingStops();
   state.routeGeom = null; state.legInfo = []; state.optSaving = 0; state.routeDist = 0;
   if (!pend.length) { drawRoute(); return; }
@@ -1302,11 +1313,27 @@ async function rebuildRoute(allowOptimize) {
   }
   await updateNavLine();
   persist();
+  } finally {
+    rebuildBusy = false;
+  }
 }
 
 /* ---------- NAVIGATIELIJN: alleen naar de huidige stop ---------- */
 let navLineOrigin = null, navLineTs = 0, navLineStop = null;
+// Zelfde bescherming als rebuildBusy hierboven: onPos() vuurt per GPS-fix
+// (elke 1-5s) en zette navLineTs al bij de AANROEP i.p.v. bij het klaar zijn
+// — bij een trage server (of eentje die de fetch-timeout raakt) kon dat een
+// nieuwe aanroep triggeren terwijl de vorige nog liep, en zo stapelden de
+// snap-aanvragen naar dezelfde OSRM-server zich op. Elke extra aanvraag die
+// moet wachten op een vrije verbinding maakt de kans op een eigen timeout
+// (en dus een rechte lijn i.p.v. de echte weg) alleen maar groter. Met deze
+// guard wordt een overlappende aanroep gewoon overgeslagen; de volgende
+// GPS-fix (of de volgende rebuildRoute) proberen het vanzelf opnieuw.
+let navLineBusy = false;
 async function updateNavLine() {
+  if (navLineBusy) return;
+  navLineBusy = true;
+  try {
   let cur = currentStop();
   const origin = lastPos ? { lat: lastPos.lat, lon: lastPos.lon } : null;
   state.routeGeom = null;
@@ -1329,6 +1356,9 @@ async function updateNavLine() {
   }
   drawRoute();
   updateNavCard();
+  } finally {
+    navLineBusy = false;
+  }
 }
 
 /* ---------- CUSTOM GPS ICON (optioneel: plaats gps-icon.png in de app-map) ---------- */
