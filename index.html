@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 41: fix voor hemelsbreed-navigeren + trage knoppen na build 40 — updateNavLine() en rebuildRoute() konden zichzelf overlappen (elke GPS-fix kon een nieuwe aanroep starten terwijl de vorige nog op een trage server wachtte), waardoor er steeds meer gelijktijdige OSRM-aanvragen om dezelfde paar verbindingen streden; elke extra aanvraag liep zo een grotere kans op de build-40 timeout, met een rechte lijn i.p.v. de weg tot gevolg. Nieuwe rebuildBusy/navLineBusy-vlaggen slaan een overlappende aanroep gewoon over i.p.v. 'm te laten opstapelen; timeouts voor de hoofdroute ook iets ruimer (04-08-2026) -->
+<!-- Build 42: audit-ronde met twee echte bugs en drie accubesparingen. (1) De adres-cache verloor ~80% van de opgezochte adressen doordat de 5 parallelle geocode-workers elkaars schrijfacties overschreven — vrijwel elke rit werden alle adressen dus opnieuw opgehaald (traag laadscherm). Nu één gedeeld object met gedebouncede opslag. (2) Mislukte snelheidslimiet-aanvragen zetten geen afkoelperiode, waardoor er bij slecht bereik eindeloos nieuwe Overpass-verzoeken werden afgevuurd. (3) De routescan in de animatielus liep elke frame vanaf het begin; nu binair zoeken + de volledige scan gecapt op 4x/s. (4) De routelijn wordt niet meer naar de GPU gestuurd als er niets veranderd is. (5) GPS, animatielus en schermvergrendeling gaan uit zodra de rit klaar is (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 41</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 42</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -796,9 +796,36 @@ async function fetchT(url, ms = 10000) {
   finally { clearTimeout(t); }
 }
 
-/* ---------- GEOCODING: PDOK (NL) met Nominatim-fallback ---------- */
-function geocache() { try { return JSON.parse(localStorage.getItem(GEOCACHE_KEY) || '{}'); } catch (e) { return {}; } }
-function saveGeocache(c) { try { localStorage.setItem(GEOCACHE_KEY, JSON.stringify(c)); } catch (e) {} }
+/* ---------- GEOCODING: PDOK (NL) met Nominatim-fallback ----------
+   De adres-cache is ÉÉN gedeeld object in het geheugen, dat één keer uit
+   localStorage geladen wordt en daarna alleen nog gedebounced weggeschreven.
+   Eerder las én schreef elke `geocodeOne()` de hele cache opnieuw
+   (JSON.parse + JSON.stringify + synchrone localStorage-write per adres).
+   Dat gaf twee problemen:
+   1) VERLOREN ADRESSEN: geocodeAll draait 5 workers parallel. Die lazen
+      allemaal hun eigen kopie van de cache, voegden hun adres toe en
+      schreven de HELE kopie terug — waarmee ze elkaars zojuist toegevoegde
+      adressen overschreven. Een deel van de opgezochte adressen verdween
+      dus stilletjes weer en werd de rit erna gewoon opnieuw opgezocht.
+   2) TRAAGHEID: bij een rit van 100 stops waren dat 100 volledige
+      parse/stringify-rondes over een cache die na maanden duizenden adressen
+      bevat — allemaal synchroon op de main thread, precies tijdens het
+      laadscherm. */
+let _geocache = null, _geocacheSaveT = null;
+function geocache() {
+  if (!_geocache) { try { _geocache = JSON.parse(localStorage.getItem(GEOCACHE_KEY) || '{}'); } catch (e) { _geocache = {}; } }
+  return _geocache;
+}
+function saveGeocache() {
+  clearTimeout(_geocacheSaveT);
+  _geocacheSaveT = setTimeout(() => {
+    try { localStorage.setItem(GEOCACHE_KEY, JSON.stringify(_geocache || {})); } catch (e) {}
+  }, 800);
+}
+function flushGeocache() {
+  clearTimeout(_geocacheSaveT);
+  try { localStorage.setItem(GEOCACHE_KEY, JSON.stringify(_geocache || {})); } catch (e) {}
+}
 
 async function geocodeOne(stop) {
   const key = stop.postcode + '|' + stop.huisnr + (stop.toevoeging ? '|' + stop.toevoeging : '');
@@ -813,7 +840,7 @@ async function geocodeOne(stop) {
       const d = j.response && j.response.docs && j.response.docs[0];
       if (d && d.centroide_ll) {
         const m = d.centroide_ll.match(/POINT\(([\d.]+) ([\d.]+)\)/);
-        if (m) { const res = { lat: +m[2], lon: +m[1], src: 'pdok' }; cache[key] = res; saveGeocache(cache); return res; }
+        if (m) { const res = { lat: +m[2], lon: +m[1], src: 'pdok' }; cache[key] = res; saveGeocache(); return res; }
       }
     }
   } catch (e) {}
@@ -827,7 +854,7 @@ async function geocodeOne(stop) {
         const d = j.response && j.response.docs && j.response.docs[0];
         if (d && d.centroide_ll) {
           const m = d.centroide_ll.match(/POINT\(([\d.]+) ([\d.]+)\)/);
-          if (m) { const res = { lat: +m[2], lon: +m[1], src: 'pdok' }; cache[key] = res; saveGeocache(cache); return res; }
+          if (m) { const res = { lat: +m[2], lon: +m[1], src: 'pdok' }; cache[key] = res; saveGeocache(); return res; }
         }
       }
     } catch (e) {}
@@ -838,7 +865,7 @@ async function geocodeOne(stop) {
     const r = await fetchT(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&countrycodes=nl`);
     if (r.ok) {
       const j = await r.json();
-      if (j[0]) { const res = { lat: +j[0].lat, lon: +j[0].lon, src: 'osm' }; cache[key] = res; saveGeocache(cache); return res; }
+      if (j[0]) { const res = { lat: +j[0].lat, lon: +j[0].lon, src: 'osm' }; cache[key] = res; saveGeocache(); return res; }
     }
   } catch (e) {}
   return null;
@@ -857,6 +884,7 @@ async function geocodeAll(stops, onProgress) {
     }
   });
   await Promise.all(workers);
+  flushGeocache(); // alle nieuw gevonden adressen in één keer vastleggen
   return failed;
 }
 
@@ -1521,6 +1549,9 @@ function drawRoute() {
 }
 /* Live meeknippen: teken de route vanaf de huidige positie, elke frame, zonder netwerk.
    Zo loopt de lijn net zo vlot mee als de GPS-stip. */
+// Onthoudt waar we vorige frame op de lijn zaten, zodat we niet elke keer de
+// hele route hoeven af te zoeken (zie hieronder).
+let clipIdx = -1, clipGeom = null, clipLastLat = 0, clipLastLon = 0;
 function drawRouteClipped(lat, lon) {
   if (!map) return;
   const src = map.getSource('route');
@@ -1530,6 +1561,12 @@ function drawRouteClipped(lat, lon) {
   const c = g.coordinates;
   const kx = Math.cos(lat * Math.PI / 180);
   const px = lon * kx, py = lat;
+  // Dichtstbijzijnde segment zoeken over de hele lijn. Bewust GEEN venster-
+  // zoekmethode rond het vorige segment: een bezorgroute buigt geregeld langs
+  // zichzelf terug, en dan kiest zo'n venster een ander stuk lijn dan de
+  // volledige scan (in een simulatie tot ~29 m verschil). Deze scan is ook
+  // niet de dure post — de lijn naar de huidige stop is maar een paar honderd
+  // punten.
   let bi = 0, bLon = c[0][0], bLat = c[0][1], bd2 = Infinity;
   for (let i = 0; i < c.length - 1; i++) {
     const ax = c[i][0] * kx, ay = c[i][1], bx = c[i + 1][0] * kx, by = c[i + 1][1];
@@ -1539,6 +1576,13 @@ function drawRouteClipped(lat, lon) {
     const sx = ax + dx * t, sy = ay + dy * t, ex = px - sx, ey = py - sy, d2 = ex * ex + ey * ey;
     if (d2 < bd2) { bd2 = d2; bi = i; bLon = sx / kx; bLat = sy; }
   }
+  // Is er niets veranderd sinds de vorige frame, dan ook niets naar de kaart
+  // sturen. setData duwt de hele lijn opnieuw naar de GPU — dat is hier het
+  // dure deel, en bij stilstaan of stapvoets rijden was dat elke frame
+  // hetzelfde plaatje. 1e-6 graden is ~11 cm, dus onzichtbaar.
+  if (clipGeom === g && bi === clipIdx &&
+      Math.abs(bLat - clipLastLat) < 1e-6 && Math.abs(bLon - clipLastLon) < 1e-6) return;
+  clipIdx = bi; clipGeom = g; clipLastLat = bLat; clipLastLon = bLon;
   const coords = [[bLon, bLat]];
   for (let i = bi + 1; i < c.length; i++) coords.push(c[i]);
   src.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } });
@@ -1567,7 +1611,20 @@ function gpsError(e) {
 async function requestWakeLock() {
   try { if ('wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); } } catch (e) {}
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
+// Alles wat continu stroom trekt in één keer uitzetten: de GPS-ontvanger (op
+// hoge nauwkeurigheid), de animatielus en het wakker houden van het scherm.
+// Wordt gebruikt zodra de rit klaar is — daarna valt er niets meer te
+// navigeren, maar bleef dit alles gewoon doordraaien zolang de app openstond.
+function stopGPS() {
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  if (gpsRetryTimer) { clearTimeout(gpsRetryTimer); gpsRetryTimer = null; }
+  if (interpRaf) { cancelAnimationFrame(interpRaf); interpRaf = null; }
+  if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  // Alleen het scherm wakker houden zolang er nog daadwerkelijk gereden wordt
+  if (document.visibilityState === 'visible' && watchId !== null) requestWakeLock();
+});
 
 let spdEma = null, lastSpdFix = null, accBad = 0, accWarned = false;
 // Snelheidsgeschiedenis voor de grafiek (laatste minuut, {t,kmh} per fix)
@@ -1872,6 +1929,8 @@ function snapToRoute(lat, lon) {
    daardoor volledig; de stip kan alleen nog vloeiend over de lijn schuiven. */
 let routeCum = null, routeCumGeom = null, routeTotal = 0;
 let routeProg = null, matchOn = false, offRouteT = 0;
+// Cache voor de dure volledige routescan (zie projectOnRoute)
+let fullScanCache = null, fullScanGeom = null, fullScanTs = 0;
 
 function buildRouteCum() {
   const g = state.routeGeom;
@@ -1910,13 +1969,34 @@ function projectOnRoute(lat, lon, nearProg) {
   let best = null;
   if (nearProg != null) {
     // Zoek eerst dicht bij de huidige voortgang: voorkomt snappen naar een
-    // verkeerd (parallel of terugkomend) stuk van dezelfde route
-    let lo = 0; while (lo < routeCum.length - 2 && routeCum[lo + 1] < nearProg - 200) lo++;
+    // verkeerd (parallel of terugkomend) stuk van dezelfde route.
+    // Het beginpunt van dat venster wordt met binair zoeken bepaald —
+    // routeCum loopt altijd oplopend, dus dat geeft exact dezelfde uitkomst
+    // als de vorige lus die elke frame vanaf index 0 naar voren liep (bij
+    // een lange route honderden stappen, 60x per seconde).
+    let lo = 0, hiB = routeCum.length - 2;
+    const from = nearProg - 200;
+    while (lo < hiB) { const m = (lo + hiB) >> 1; if (routeCum[m + 1] < from) lo = m + 1; else hiB = m; }
     let hi = lo; while (hi < routeCum.length - 1 && routeCum[hi] < nearProg + 500) hi++;
     best = scan(lo, hi);
     if (best && Math.sqrt(best.d2) * 111320 > 35) best = null;
   }
-  if (!best) best = scan(0, c.length - 1);
+  if (!best) {
+    // Volledige scan over de hele routelijn: alleen nodig als we NIET op de
+    // route zitten (bv. geparkeerd bij een bezorgstop, of net een nieuwe
+    // route). Dat kan minutenlang duren en deed die volle scan tot nu toe
+    // elke frame — puur accuverbruik terwijl je stilstaat. 4x per seconde is
+    // ruim genoeg om te merken dat je weer op de route komt (je moet er toch
+    // binnen 35 m voor zijn); tussendoor hergebruiken we de vorige uitkomst,
+    // zodat de hysterese (3s buiten 55 m) gewoon blijft werken.
+    const nowP = performance.now();
+    if (fullScanCache && fullScanGeom === state.routeGeom && nowP - fullScanTs < 250) {
+      best = fullScanCache;
+    } else {
+      best = scan(0, c.length - 1);
+      fullScanCache = best; fullScanGeom = state.routeGeom; fullScanTs = nowP;
+    }
+  }
   if (!best) return null;
   const segLen = routeCum[best.i + 1] - routeCum[best.i];
   return {
@@ -2430,7 +2510,17 @@ async function refreshSpeedLimit() {
       else $('limitSign').style.display = 'none';
     }
     limitPos = { lat: lastPos.lat, lon: lastPos.lon }; limitTs = Date.now();
-  } catch (e) {}
+  } catch (e) {
+    // Ook na een MISLUKTE poging de afkoelperiode zetten. Stond dit alleen in
+    // het try-blok, dan sloeg een timeout/netwerkfout deze regel over, bleef
+    // limitPos leeg en vuurde de volgende GPS-fix (1-5x/s!) meteen een nieuwe
+    // Overpass-aanvraag af — een eindeloze stroom mislukkende verzoeken van
+    // 8s per stuk, precies wanneer je slecht bereik hebt. Kost data en accu
+    // en levert nooit iets op. Bij een fout wachten we wat korter (15s) dan
+    // na een succes (45s), zodat het wel snel weer werkt zodra er bereik is.
+    limitPos = { lat: lastPos.lat, lon: lastPos.lon };
+    limitTs = Date.now() - 30000;
+  }
   limitBusy = false;
 }
 
@@ -2522,8 +2612,15 @@ function updateNavCard() {
     $('pkgWarn').style.display = 'none';
     $('nextRow').style.display = 'none';
     $('turnRow').style.display = 'none';
-    saveDriverProfile();
-    if (!rideCompleteShown) { rideCompleteShown = true; showRideComplete(); }
+    if (!rideCompleteShown) {
+      rideCompleteShown = true;
+      saveDriverProfile();
+      showRideComplete();
+      // Rit klaar: GPS, animatielus en schermvergrendeling uit. Zet een stop
+      // later weer op openstaand (via het stopmenu), dan start startGPS()
+      // vanuit afterStopChange() alles gewoon weer op.
+      stopGPS();
+    }
     return;
   }
   if (cur.isDepot) {
@@ -2607,7 +2704,15 @@ function showRideComplete() {
 
 /* ---------- STOPACTIES ---------- */
 async function afterStopChange(reroute) {
-  if (state.stops.some(s => s.status === 'pending')) depotArrived = false;
+  const nogOpen = state.stops.some(s => s.status === 'pending');
+  if (nogOpen) depotArrived = false;
+  // Kwam er na een afgeronde rit tóch weer een stop bij (of is er eentje
+  // teruggezet op openstaand)? Dan de GPS/animatielus weer aanzetten, die bij
+  // het afronden van de rit is uitgeschakeld om accu te sparen.
+  if (nogOpen && rideCompleteShown) {
+    rideCompleteShown = false;
+    if (watchId === null) startGPS();
+  }
   if (popStop && popStop.status !== 'pending') { hideArrivePop(); popStop = null; }
   drawStops();
   updateNavCard();
@@ -3011,9 +3116,12 @@ function adminClearProfiles() {
   del.forEach(k=>localStorage.removeItem(k));
   renderAdminContent();
 }
-function adminClearCache() { if(!confirm('Geocode cache wissen?'))return; try{localStorage.removeItem('routefast_geocache');}catch{} renderAdminContent(); }
+// LET OP: ook de in-geheugen cache leegmaken, anders schrijft de eerstvolgende
+// geocode de zojuist gewiste adressen gewoon weer terug naar localStorage.
+function adminClearCache() { if(!confirm('Geocode cache wissen?'))return; try{clearTimeout(_geocacheSaveT); _geocache=null; localStorage.removeItem('routefast_geocache');}catch{} renderAdminContent(); }
 function adminClearAll() {
   if(!confirm('ALLE data wissen? Onomkeerbaar!'))return;
+  clearTimeout(_geocacheSaveT); _geocache=null;
   localStorage.clear(); testMode=false; $('testBar').style.display='none'; renderAdminContent();
 }
 function adminExport() {
