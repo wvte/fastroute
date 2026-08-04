@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 39: batterijverbruik verlaagd — de GPS-animatieloop (smoothMarker) rendert de kaart niet meer 60x/s: gecapt op ~30fps tijdens het rijden, en op ~1x/s zodra je (bijna) stilstaat (bezorgstop), tot je écht meer dan anderhalve meter verplaatst bent. Interpolatie/voortgangsberekening blijft wel elk frame lopen, alleen het duurdere kaart-schrijfwerk (setData + easeTo) wordt overgeslagen (04-08-2026) -->
+<!-- Build 40: fix voor het vasthangen bij "Route berekenen..." — alle externe fetch-aanroepen (OSRM, PDOK, Nominatim, Overpass) hadden geen timeout, dus als de publieke OSRM-server bij een grote rit (tot 140 stops sinds build 36) traag was of niet antwoordde, bleef het scherm voor altijd hangen. Nieuwe fetchT()-helper breekt elke aanvraag na 6-20s netjes af, waarna de bestaande fallbacks het gewoon overnemen (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 39</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 40</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -782,6 +782,20 @@ function parseLaadlijst(pagesItems) {
   return rides;
 }
 
+/* ---------- FETCH MET TIMEOUT ----------
+   Gewone fetch() heeft geen ingebouwde timeout: als een server (drukke
+   publieke OSRM-demo, wisselend mobiel signaal) nooit antwoordt, blijft een
+   await hier voor altijd hangen — en dus ook het scherm ("Route
+   berekenen..." dat nooit verdergaat). Elke externe aanroep in de app gaat
+   voortaan via deze helper, die de aanvraag na `ms` afbreekt zodat de
+   bestaande try/catch-fallbacks gewoon in werking treden. */
+async function fetchT(url, ms = 10000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
+
 /* ---------- GEOCODING: PDOK (NL) met Nominatim-fallback ---------- */
 function geocache() { try { return JSON.parse(localStorage.getItem(GEOCACHE_KEY) || '{}'); } catch (e) { return {}; } }
 function saveGeocache(c) { try { localStorage.setItem(GEOCACHE_KEY, JSON.stringify(c)); } catch (e) {} }
@@ -793,7 +807,7 @@ async function geocodeOne(stop) {
   // 1) PDOK Locatieserver (gratis, NL overheid, zeer nauwkeurig)
   try {
     const q = encodeURIComponent(`${stop.postcode} ${stop.huisnr}${stop.toevoeging ? ' ' + stop.toevoeging.replace(/^-/, '') : ''}`);
-    const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${q}&fq=type:adres&rows=1`);
+    const r = await fetchT(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${q}&fq=type:adres&rows=1`);
     if (r.ok) {
       const j = await r.json();
       const d = j.response && j.response.docs && j.response.docs[0];
@@ -807,7 +821,7 @@ async function geocodeOne(stop) {
   if (stop.toevoeging) {
     try {
       const q = encodeURIComponent(`${stop.postcode} ${stop.huisnr}`);
-      const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${q}&fq=type:adres&rows=1`);
+      const r = await fetchT(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${q}&fq=type:adres&rows=1`);
       if (r.ok) {
         const j = await r.json();
         const d = j.response && j.response.docs && j.response.docs[0];
@@ -821,7 +835,7 @@ async function geocodeOne(stop) {
   // 2) Nominatim fallback
   try {
     const q = encodeURIComponent(`${stop.huisnr}, ${stop.street}, ${stop.city}, Netherlands`);
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&countrycodes=nl`);
+    const r = await fetchT(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&countrycodes=nl`);
     if (r.ok) {
       const j = await r.json();
       if (j[0]) { const res = { lat: +j[0].lat, lon: +j[0].lon, src: 'osm' }; cache[key] = res; saveGeocache(cache); return res; }
@@ -865,7 +879,7 @@ function hav(a, b) {
 async function osrmRouteSnap(from, to) {
   // Gebruik grote snap-radius zodat GPS niet exact op de weg hoeft te staan
   const cs = `${from.lon.toFixed(6)},${from.lat.toFixed(6)};${to.lon.toFixed(6)},${to.lat.toFixed(6)}`;
-  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=true&radiuses=500;500`);
+  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=true&radiuses=500;500`, 12000);
   if (!r.ok) throw new Error('OSRM snap ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM snap: ' + j.code);
@@ -873,7 +887,7 @@ async function osrmRouteSnap(from, to) {
 }
 async function osrmRoute(points, overview = 'full', withSteps = false) {
   const cs = points.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`);
+  const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${cs}?overview=${overview}&geometries=geojson&steps=${withSteps}`, 15000);
   if (!r.ok) throw new Error('OSRM ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM: ' + j.code);
@@ -882,7 +896,7 @@ async function osrmRoute(points, overview = 'full', withSteps = false) {
 
 async function osrmTable(points) {
   const cs = points.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
-  const r = await fetch(`https://router.project-osrm.org/table/v1/driving/${cs}?annotations=duration`);
+  const r = await fetchT(`https://router.project-osrm.org/table/v1/driving/${cs}?annotations=duration`, 20000);
   if (!r.ok) throw new Error('OSRM table ' + r.status);
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM table: ' + j.code);
@@ -2161,7 +2175,7 @@ function depotPoint() {
 }
 async function geocodeFree(q) {
   try {
-    const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(q)}&fq=type:adres&rows=1`);
+    const r = await fetchT(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(q)}&fq=type:adres&rows=1`);
     if (r.ok) {
       const j = await r.json();
       const d = j.response && j.response.docs && j.response.docs[0];
@@ -2361,7 +2375,7 @@ async function refreshSpeedLimit() {
   limitBusy = true;
   try {
     const q = `[out:json][timeout:5];way(around:35,${lastPos.lat.toFixed(5)},${lastPos.lon.toFixed(5)})[highway][maxspeed];out tags geom;`;
-    const r = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q));
+    const r = await fetchT('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q), 8000);
     if (r.ok) {
       const j = await r.json();
       let best = null, bestD = 1e9;
@@ -2752,7 +2766,7 @@ async function addStop(mode) {
   if (!res) { $('addMsg').textContent = 'Adres niet gevonden. Controleer postcode en huisnummer.'; return; }
   stop.lat = res.lat; stop.lon = res.lon;
   try {
-    const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(pc + ' ' + mNr[1])}&fq=type:adres&rows=1`);
+    const r = await fetchT(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(pc + ' ' + mNr[1])}&fq=type:adres&rows=1`);
     const d = (await r.json()).response.docs[0];
     if (d) { stop.street = (d.straatnaam || '').toUpperCase(); stop.city = (d.woonplaatsnaam || '').toUpperCase(); }
   } catch (e) {}
@@ -2783,7 +2797,7 @@ function onAddSearchInput() {
 async function runAddSearch(q) {
   const seq = ++addSearchSeq;
   try {
-    const r = await fetch(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(q)}&fq=type:adres&rows=6`);
+    const r = await fetchT(`https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(q)}&fq=type:adres&rows=6`, 6000);
     const docs = ((await r.json()).response || {}).docs || [];
     if (seq !== addSearchSeq) return;
     renderAddSearch(docs);
