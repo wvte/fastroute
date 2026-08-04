@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 33: vrij rondkijken via elke gebruikersinteractie (movestart i.p.v. alleen dragstart), eigen rustige attributie-knopje i.p.v. auto-uitrollende OpenFreeMap-control (27-07-2026) -->
+<!-- Build 34: einde-rit overzicht verticaal gecentreerd, PDF-parser herkent tussengevoegde .1/.2-pakketnummers, snelheidsgrafiek (tik op live snelheid) met scrub en -5 km/u correctie (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -189,10 +189,14 @@ input.txt:focus,select.txt:focus{outline:none;border-color:var(--blue);}
 .note-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff6d00;margin-left:5px;vertical-align:middle;}
 #speedBox{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);z-index:500;display:none;flex-direction:column;align-items:center;gap:6px;}
 #limitSign{display:none;width:62px;height:62px;border-radius:50%;background:#fff;border:7px solid #d63b2f;color:#10141a;font-size:26px;font-weight:900;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);}
-#speedNow{background:#fff;border-radius:14px;padding:6px 12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:62px;}
+#speedNow{background:#fff;border-radius:14px;padding:6px 12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35);min-width:62px;cursor:pointer;}
 #speedNow .v{font-size:26px;font-weight:900;line-height:1;}
 #speedNow .u{font-size:11px;color:#5b6470;font-weight:700;}
 #speedNow.over .v{color:var(--red);}
+/* Snelheidsgrafiek-paneel */
+#spdGraphReadout{text-align:center;font-size:16px;font-weight:800;color:var(--text);min-height:22px;margin-bottom:8px;}
+#spdGraphWrap{position:relative;touch-action:none;background:var(--bg);border-radius:14px;padding:6px;}
+#spdGraphSvg{width:100%;height:140px;display:block;}
 #accWarn{position:absolute;left:0;right:0;z-index:515;background:var(--accent);color:#10141a;font-size:15px;font-weight:700;padding:9px 14px;display:none;}
 /* Lucide icoonsysteem — één consistente lijnstijl door de hele app */
 .lic{width:24px;height:24px;display:inline-block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.18em;flex:0 0 auto;}
@@ -246,6 +250,8 @@ header.bar img.logo{width:32px;height:32px;border-radius:8px;flex:0 0 auto;}
 #testBar{display:none;background:#ff6d00;color:#fff;text-align:center;padding:4px 8px;font-size:12px;font-weight:700;position:fixed;top:0;left:0;right:0;z-index:2800;}
 /* ---- EINDE-RIT OVERZICHT ---- */
 #rideCompleteScreen{display:none;position:fixed;inset:0;z-index:2700;background:linear-gradient(160deg,#e10613,#9c0009);overflow-y:auto;}
+/* Inhoud verticaal centreren i.p.v. bovenaan geplakt (was te hoog in beeld) */
+#rideCompleteScreen .rcInner{min-height:100dvh;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;}
 /* ---- OFFLINE INDICATOR ---- */
 #offlinePill{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 92px);z-index:1200;background:#10141a;color:var(--accent);font-size:13px;font-weight:700;padding:7px 14px;border-radius:99px;box-shadow:0 3px 12px rgba(0,0,0,.35);display:none;align-items:center;gap:7px;}
 #offlinePill.show{display:flex;}
@@ -325,7 +331,7 @@ body.dark .addsr:active{background:#0f1520;}
   <div id="accWarn" onclick="this.style.display='none'"></div>
   <div id="speedBox">
     <div id="limitSign"></div>
-    <div id="speedNow"><div class="v" id="spdV">0</div><div class="u">km/u</div></div>
+    <div id="speedNow" onclick="openSpeedGraph()"><div class="v" id="spdV">0</div><div class="u">km/u</div></div>
   </div>
   <div id="arrivePop" style="display:none">
     <div class="apNum" id="apNum"></div>
@@ -444,7 +450,19 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 33</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:#8a93a0;padding:0 4px 14px"><b>RouteFast build 34</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+    </div>
+  </div>
+</div>
+
+<!-- PANEL: SNELHEIDSGRAFIEK -->
+<div class="panel" id="panel-speedgraph">
+  <div class="sheet">
+    <h2>Snelheid — laatste minuut<button class="x" onclick="closePanel('panel-speedgraph')"><svg class="lic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></h2>
+    <div class="body">
+      <div id="spdGraphReadout">—</div>
+      <div id="spdGraphWrap"><svg id="spdGraphSvg" viewBox="0 0 300 140" preserveAspectRatio="none"></svg></div>
+      <div style="font-size:12px;color:var(--text-soft);text-align:center;margin-top:8px">Sleep met je vinger over de grafiek · gecorrigeerd voor GPS-afwijking (−5 km/u)</div>
     </div>
   </div>
 </div>
@@ -642,14 +660,17 @@ function parseLaadlijst(pagesItems) {
       const mBez = line.match(/Bezorger:\s*(\d+)\s+(.+?)\s+(\d{4})\s+Afhaalopdrachten/);
       if (mBez) { ride.bezorgerId = mBez[1]; ride.bezorger = mBez[2].trim(); ride.code = mBez[3]; continue; }
       if (/Pagina \d+ van \d+/.test(line) || /Hub code:/.test(line)) continue;
-      if (cells.length >= 4 && /^\d{1,3}$/.test(cells[0]) && PC_RE.test(cells[1])) {
+      // Pakketnummer is meestal een heel getal, maar DHL voegt soms een
+      // tussengevoegd pakket toe als bijv. "52.1" of "0.2" (extra stop
+      // tussen 52 en 53, of vóór stop 1) — die moeten net zo herkend worden.
+      if (cells.length >= 4 && /^\d{1,3}(\.\d{1,2})?$/.test(cells[0]) && PC_RE.test(cells[1])) {
         const rest = cells.slice(2);
         let hIdx = -1;
         for (let i = 1; i < rest.length; i++) if (/^\d+$/.test(rest[i])) { hIdx = i; break; }
         if (hIdx === -1) { pending = null; continue; }
         const tail = rest.slice(hIdx + 1);
         pending = {
-          seq: parseInt(cells[0], 10), postcode: cells[1],
+          seq: parseFloat(cells[0]), postcode: cells[1],
           street: rest.slice(0, hIdx).join(' '), huisnr: rest[hIdx],
           toevoeging: tail.slice(0, -1).join(' '), city: tail.length ? tail[tail.length - 1] : '',
           time: '', window: '', afhaal: false, sender: ''
@@ -815,7 +836,7 @@ function optimizeOrder(n, M, maxShift = 3) {
    Zo werken de terugknop en de terug-swipe op iOS gewoon:
    #/start -> #/ritten -> #/route -> #/route/stops enz.            */
 const ROUTES = { 'scr-upload': 'start', 'scr-rides': 'ritten', 'scr-loading': 'laden', 'scr-nav': 'route' };
-const PANELS = { 'panel-stops': 'stops', 'panel-stopmenu': 'stopmenu', 'panel-addstop': 'nieuwe-stop', 'panel-notes': 'notities', 'panel-settings': 'instellingen' };
+const PANELS = { 'panel-stops': 'stops', 'panel-stopmenu': 'stopmenu', 'panel-addstop': 'nieuwe-stop', 'panel-notes': 'notities', 'panel-settings': 'instellingen', 'panel-speedgraph': 'snelheid' };
 let navInternal = false;
 
 function activeScreen() {
@@ -1284,6 +1305,8 @@ async function requestWakeLock() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
 
 let spdEma = null, lastSpdFix = null, accBad = 0, accWarned = false;
+// Snelheidsgeschiedenis voor de grafiek (laatste minuut, {t,kmh} per fix)
+let spdHistory = [], spdGraphState = null, spdScrubActive = false;
 let saveNextZoom = false;
 let rideStartTime = 0, rideCompleteShown = false;
 let navExpanded = false;
@@ -1347,6 +1370,11 @@ function onPos(p) {
     $('speedBox').style.display = 'flex';
     $('spdV').textContent = kmh;
     $('speedNow').classList.toggle('over', limitVal !== null && kmh > limitVal + 3);
+    // Snelheidsgeschiedenis bijhouden voor de grafiek (laatste 65s, met marge)
+    spdHistory.push({ t: now, kmh });
+    const spdCutoff = now - 65000;
+    while (spdHistory.length && spdHistory[0].t < spdCutoff) spdHistory.shift();
+    if (!spdScrubActive && $('panel-speedgraph').classList.contains('open')) renderSpeedGraph();
     // Dwell time: bijhouden hoe lang je stilstaat per adres
     trackDwell(kmh);
     if (state.settings.autoZoom) doAutoZoom();
@@ -1659,6 +1687,78 @@ function doAutoZoom() {
     if (interpRaf && trackMode !== 'free') camZoomTarget = baseZoom; // soepel via camera-loop
     else { saveNextZoom = false; map.easeTo({ zoom: baseZoom, duration: 600 }); }
   }
+}
+
+/* ---------- SNELHEIDSGRAFIEK ----------
+   Tik op de live snelheid: toont de laatste 60 seconden als lijngrafiek.
+   GPS-snelheid meet in de praktijk structureel te hoog, daarom hier (en
+   alleen hier) -5 km/u correctie voor een realistischer beeld; de HUD en
+   de te-hard-melding blijven ongemoeid. Slepen met de vinger scrubt door
+   de lijn en toont de snelheid op dat moment. */
+const SPD_GRAPH_CORRECTION = 5;
+function speedGraphSamples() {
+  const now = Date.now(), from = now - 60000;
+  return spdHistory.filter(p => p.t >= from).map(p => ({ t: p.t, kmh: Math.max(0, p.kmh - SPD_GRAPH_CORRECTION) }));
+}
+function openSpeedGraph() {
+  openPanel('panel-speedgraph');
+  renderSpeedGraph();
+}
+function renderSpeedGraph() {
+  const svg = $('spdGraphSvg');
+  if (!svg) return;
+  const pts = speedGraphSamples();
+  if (pts.length < 2) {
+    svg.innerHTML = '<text x="150" y="74" text-anchor="middle" font-size="13" fill="var(--text-soft)">Nog te weinig data — begin met rijden</text>';
+    $('spdGraphReadout').textContent = pts.length ? Math.round(pts[pts.length - 1].kmh) + ' km/u' : '—';
+    spdGraphState = null;
+    return;
+  }
+  const W = 300, H = 140, PAD = 10;
+  const now = Date.now(), from = now - 60000;
+  const maxV = Math.max(10, Math.max(...pts.map(p => p.kmh)) * 1.15);
+  const x = t => PAD + (W - PAD * 2) * ((t - from) / 60000);
+  const y = v => H - PAD - (H - PAD * 2) * (v / maxV);
+  const path = pts.map((p, i) => (i === 0 ? 'M' : 'L') + x(p.t).toFixed(1) + ',' + y(p.kmh).toFixed(1)).join(' ');
+  const last = pts[pts.length - 1];
+  const area = path + ` L${x(last.t).toFixed(1)},${(H - PAD).toFixed(1)} L${x(pts[0].t).toFixed(1)},${(H - PAD).toFixed(1)} Z`;
+  svg.innerHTML =
+    `<path d="${area}" fill="var(--blue)" fill-opacity="0.12" stroke="none"></path>` +
+    `<path d="${path}" fill="none" stroke="var(--blue)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>` +
+    `<line id="spdCursorLine" x1="${x(last.t).toFixed(1)}" y1="${PAD}" x2="${x(last.t).toFixed(1)}" y2="${(H - PAD).toFixed(1)}" stroke="var(--text-soft)" stroke-width="1" stroke-dasharray="3,3" style="display:none"></line>` +
+    `<circle id="spdCursorDot" cx="${x(last.t).toFixed(1)}" cy="${y(last.kmh).toFixed(1)}" r="4.5" fill="var(--blue)" stroke="#fff" stroke-width="1.5"></circle>`;
+  $('spdGraphReadout').textContent = Math.round(last.kmh) + ' km/u nu';
+  spdGraphState = { pts, from, W, H, PAD, maxV };
+}
+function scrubSpeedGraph(clientX) {
+  const st = spdGraphState;
+  const svg = $('spdGraphSvg');
+  if (!st || !svg) return;
+  const rect = svg.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const t = st.from + frac * 60000;
+  // dichtstbijzijnde sample zoeken
+  let best = st.pts[0];
+  for (const p of st.pts) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+  const px = st.PAD + (st.W - st.PAD * 2) * ((best.t - st.from) / 60000);
+  const py = st.H - st.PAD - (st.H - st.PAD * 2) * (best.kmh / st.maxV);
+  const cursor = $('spdCursorLine'), dot = $('spdCursorDot');
+  if (cursor) { cursor.style.display = 'block'; cursor.setAttribute('x1', px.toFixed(1)); cursor.setAttribute('x2', px.toFixed(1)); }
+  if (dot) { dot.setAttribute('cx', px.toFixed(1)); dot.setAttribute('cy', py.toFixed(1)); }
+  const secAgo = Math.round((Date.now() - best.t) / 1000);
+  $('spdGraphReadout').textContent = Math.round(best.kmh) + ' km/u' + (secAgo > 0 ? ' · ' + secAgo + 's geleden' : ' · nu');
+}
+function initSpeedGraphScrub() {
+  const wrap = $('spdGraphWrap');
+  if (!wrap) return;
+  const start = e => { spdScrubActive = true; scrubSpeedGraph((e.touches ? e.touches[0] : e).clientX); e.preventDefault(); };
+  const move = e => { if (!spdScrubActive) return; scrubSpeedGraph((e.touches ? e.touches[0] : e).clientX); e.preventDefault(); };
+  const end = () => { spdScrubActive = false; renderSpeedGraph(); };
+  wrap.addEventListener('pointerdown', start);
+  wrap.addEventListener('pointermove', move);
+  wrap.addEventListener('pointerup', end);
+  wrap.addEventListener('pointercancel', end);
+  wrap.addEventListener('pointerleave', end);
 }
 
 /* ---------- VERBLIJFTIJD (DWELL TIME) ---------- */
@@ -2171,7 +2271,7 @@ function showRideComplete() {
   if (!el) return;
   const stat = (val, lbl) => `<div style="background:rgba(255,255,255,.2);border-radius:14px;padding:14px 10px"><div style="font-size:32px;font-weight:900;color:#fff;line-height:1">${val}</div><div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px">${lbl}</div></div>`;
   el.innerHTML =
-    '<div style="padding:calc(env(safe-area-inset-top)+24px) 20px 30px;max-width:480px;margin:0 auto;text-align:center">' +
+    '<div class="rcInner" style="padding:calc(env(safe-area-inset-top)+24px) 20px calc(env(safe-area-inset-bottom)+30px);max-width:480px;margin:0 auto;text-align:center">' +
     '<div style="margin-bottom:10px;color:#fff">' + ic('party','big') + '</div>' +
     '<h2 style="margin:0 0 4px;font-size:30px;color:#fff;font-weight:900">Rit voltooid!</h2>' +
     '<p style="color:rgba(255,255,255,.75);margin:0 0 24px;font-size:16px">Goed werk vandaag!</p>' +
@@ -2610,6 +2710,7 @@ function adminExport() {
 (function init() {
   history.replaceState({ screen: 'scr-upload' }, '', '#/start');
   syncSettingsUI();
+  initSpeedGraphScrub();
   const saved = loadPersisted();
   if (saved && saved.stops && saved.stops.some(s => s.status === 'pending')) {
     const done = saved.stops.filter(s => s.status !== 'pending').length;
