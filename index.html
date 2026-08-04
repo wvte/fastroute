@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 44: ritstart is nu vrijwel meteen klaar. De afstandsmatrix voor de route-optimalisatie (bij 90 stops al 8.281 routeberekeningen ineens, op de gratis gedeelde OSRM-demoserver) was verreweg de zwaarste aanvraag van de app: die duurde tientallen seconden of liep in een timeout, waarna km 0,0 en rijtijd een streepje toonde. Die matrix wordt nu alleen nog opgehaald bij kleine ritten (<=50 punten); daarboven rekent de app lokaal met hemelsbrede afstanden — geen netwerk, ~15ms voor 114 stops. Verder een herkansing zonder geometrie als de hoofdroute-aanvraag mislukt (zodat km en rijtijd er alsnog zijn), en bij een onbekende afstand een streepje i.p.v. "0,0" (04-08-2026) -->
+<!-- Build 45: de hill-climb die de gewone (getijdslotte) stops onderling herschikte is eruit, op verzoek. Reden: die woog stops tegen elkaar af op hemelsbrede afstand, precies de maat die eenrichtingswegen, water en spoor negeert — de gemelde "winst" werd met diezelfde gebrekkige maat berekend en kon dus een slechtere route opleveren terwijl er een besparing in beeld stond. Wat blijft: .1/.2/.3-pakketten en de 900-serie worden nog wel op de geografisch beste plek ingevoegd (die staan aantoonbaar fout en dat scheelt kilometers), inclusief de voorkeur voor de linkerkant bij het kiezen van die plek. De DHL-volgorde blijft verder ongemoeid. optimizeOrder/tourCost/osrmTable blijven in de code staan voor als er ooit een echte routeserver met rijtijden onder de app hangt (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -482,7 +482,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div class="setrow"><span>Aankomstradius: <b id="radVal"></b> m</span><input type="range" min="15" max="75" step="5" id="radius" oninput="setRadius(this.value)"></div>
       <div class="setrow"><span>Meldingsafstand: <b id="notifyVal"></b> m</span><input type="range" min="20" max="200" step="10" id="notifyDist" oninput="setNotifyDist(this.value)"></div>
       <div class="setrow"><span>Automatisch afvinken (GPS)</span><button class="switch" id="swAuto" onclick="toggleSet('autoAdvance','swAuto')"></button></div>
-      <div class="setrow"><span>Kleine route-optimalisatie</span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
+      <div class="setrow"><span>.1/.2- en 900-pakketten slim invoegen<small style="display:block;color:var(--text-soft);font-weight:500">Zet ze op de plek in de rit waar je toch al langskomt. De rest van de DHL-volgorde blijft ongewijzigd.</small></span><button class="switch" id="swOpt" onclick="toggleSet('optimize','swOpt')"></button></div>
       <div class="setrow"><span>Auto-zoom bij bochten</span><button class="switch" id="swAutoZoom" onclick="toggleSet('autoZoom','swAutoZoom')"></button></div>
       <div class="setrow"><span>Alle huisnummers op kaart</span><button class="switch" id="swAllHnr" onclick="toggleSet('allHouseNumbers','swAllHnr')"></button></div>
       <div class="setrow"><span>Geluid bij aankomst</span><button class="switch" id="swSound" onclick="toggleSet('sound','swSound')"></button></div>
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 44</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 45</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1287,57 +1287,32 @@ async function rebuildRoute(allowOptimize) {
   if (!pend.length) { drawRoute(); return; }
   const doOptimize = allowOptimize && state.settings.optimize;
   try {
-    // Stap 1: tussengevoegde .1/.2-pakketten loskoppelen van hun toevallige
-    // PDF-plek en op de geografisch beste plek herinvoegen (geen tijdslot).
+    /* Tussengevoegde .1/.2/.3-pakketten loskoppelen van hun toevallige
+       PDF-plek en op de geografisch beste plek herinvoegen. Dit is sinds
+       build 45 de ENIGE herordening die de app nog doet, en dat is bewust:
+
+       Die pakketten (en de 900-serie, zie insertOverflowStops) staan
+       aantoonbaar FOUT — ze worden laat in het sorteerproces tussengevoegd
+       en hebben geen enkele relatie met de geografie of een tijdslot. Ze
+       een paar kilometer verplaatsen naar de buurt waar je toch al komt is
+       een grote, duidelijke winst; daar is een hemelsbrede afstandsmaat
+       ruim nauwkeurig genoeg voor.
+
+       De hill-climb die ook de GEWONE (wél getijdslotte) stops onderling
+       herschikte is eruit gehaald. Die woog stops tegen elkaar af op
+       hemelsbrede afstand, en dat is precies de maat die eenrichtingswegen,
+       water en spoor negeert — in Nederland het verschil tussen 50 meter en
+       800 meter rijden. De "winst" die hij meldde werd met diezelfde
+       gebrekkige maat berekend, dus die kon een route zelfs slechter maken
+       terwijl er een besparing in beeld stond. De DHL-volgorde zit er niet
+       willekeurig in; die op zo'n ruwe maat overrulen is een gok die we niet
+       hoeven te nemen. `optimizeOrder()`/`tourCost()`/`osrmTable()` blijven
+       staan voor als er ooit een echte routeserver (met rijtijden) onder de
+       app hangt — dan is dit weer verantwoord aan te zetten. */
     if (doOptimize) repositionFreeStops();
-    let start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
-    let pts = [...start, ...pendingStops()];
-    // Stap 2: lokale hill-climb op de resterende (wél getijdslotte) stops.
-    // De afstandsmatrix was verreweg de zwaarste aanvraag van de hele app:
-    // bij 90 stops al 8.281 routeberekeningen ineens, op een GRATIS GEDEELDE
-    // demoserver. Die deed daar tientallen seconden over of weigerde 'm, en
-    // knapte daarna ook de gewone navigatie af. Daarom halen we die matrix
-    // alleen nog op bij kleine ritten; daarboven rekenen we lokaal met
-    // hemelsbrede afstanden (`hav`, gedeeld door een gemiddelde snelheid).
-    // Dat kost GEEN netwerk en is meteen klaar. De optimalisatie verschuift
-    // stops toch maar maximaal 3 plekken binnen dezelfde buurt, en daar is
-    // hemelsbrede afstand een prima maatstaf voor — dezelfde aanpak die
-    // `bestInsertIndex()` al gebruikte voor de 900- en .1/.2-pakketten.
-    const OSRM_TABLE_MAX = 50;   // matrix = kwadratisch, dus klein houden
-    const AVG_MS = 7.5;          // ~27 km/u gemiddeld in de bebouwde kom
-    if (doOptimize && pts.length - start.length >= 3 && pts.length <= 200) {
-      try {
-        let M = null;
-        if (pts.length <= OSRM_TABLE_MAX) {
-          try { M = await osrmTable(pts); } catch (e) { M = null; }
-        }
-        if (!M) {
-          M = pts.map(a => pts.map(b => hav(a, b) / AVG_MS));
-        }
-        const n = pts.length;
-        const identity = Array.from({ length: n }, (_, k) => k);
-        const before = tourCost(identity, M, pts);
-        const { order, dur } = optimizeOrder(n, M, pts, 3);
-        if (before - dur > 45) { // alleen toepassen als het echt tijd (of linkerkant-winst) scheelt
-          const pendSnapshot = pendingStops();
-          const offset = start.length;
-          const nIncl = n - offset; // aantal stops dat in de matrix paste
-          const optimized = order.filter(ix => ix >= offset).map(ix => pendSnapshot[ix - offset]);
-          // Stops die buiten de matrix vielen (rit > 100 stops) blijven
-          // ONGEWIJZIGD achteraan staan. Zonder dit kreeg elke stop voorbij
-          // de honderdste `undefined` toegewezen en was de rit gesloopt.
-          const newPend = optimized.concat(pendSnapshot.slice(nIncl));
-          if (newPend.length === pendSnapshot.length && newPend.every(Boolean)) {
-            state.optSaving = Math.round((before - dur) / 60);
-            let pi = 0;
-            state.stops = state.stops.map(s => (s.status === 'pending' && s.lat) ? newPend[pi++] : s);
-          }
-        }
-      } catch (e) { /* optimalisatie is optioneel */ }
-    }
+    const start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
     const pend2 = pendingStops();
-    start = lastPos ? [{ lat: lastPos.lat, lon: lastPos.lon }] : [];
-    pts = [...start, ...pend2];
+    const pts = [...start, ...pend2];
     if (pts.length >= 2) {
       // Geometrie alleen ophalen bij een echte (her)planning, want die is
       // alleen nodig voor het minikaartje in het rit-overzicht. Bewust

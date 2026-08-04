@@ -3,7 +3,7 @@
    cache-first bewaard, zodat eerder bezochte gebieden offline blijven werken.
    Bump CACHE_VERSION bij een nieuwe build om oude caches te verversen. */
 'use strict';
-const CACHE_VERSION = 'v1-build44';
+const CACHE_VERSION = 'v1-build45';
 const SHELL = 'rf-shell-' + CACHE_VERSION;
 const TILES = 'rf-tiles-' + CACHE_VERSION;
 const SHELL_ASSETS = ['./', './index.html', './icon.png', './gps-icon.png'];
