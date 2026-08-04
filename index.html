@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 37: pakketvolgorde-waarschuwingen minder verwarrend gemaakt — de rode "out of order"-marker op de kaart staat nu alleen nog op het daadwerkelijk verplaatste .1/.2/.3- of 900-serie-pakket zelf (niet meer op elke stop erna), en de "niet nr X!"-hint verschijnt nog maar op de eerste stop die je tegenkomt terwijl dat pakket nog moet, niet meer bij elke tussenliggende stop tot het eindelijk gehaald is (04-08-2026) -->
+<!-- Build 38: alle-huisnummers-laag toont nu al vanaf zoom 13 i.p.v. 15, en de cijfers zijn kleiner (7-11px i.p.v. 9-13px) zodat je ze eerder ziet zonder heel ver te hoeven inzoomen (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 37</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 38</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1435,9 +1435,9 @@ function addAllHouseNumbers() {
   if (!srcId) return;
   try {
     map.addLayer({
-      id: 'all-hnr', type: 'symbol', source: srcId, 'source-layer': 'housenumber', minzoom: 15,
+      id: 'all-hnr', type: 'symbol', source: srcId, 'source-layer': 'housenumber', minzoom: 13,
       layout: { 'text-field': ['coalesce', ['get', 'housenumber'], ['get', 'addr:housenumber']],
-        'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 9, 17, 11, 19, 13], 'text-allow-overlap': false, 'text-ignore-placement': false, 'text-padding': 1 },
+        'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 13, 7, 15, 8, 17, 9.5, 19, 11], 'text-allow-overlap': false, 'text-ignore-placement': false, 'text-padding': 1 },
       paint: { 'text-color': '#3b4654', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }
     });
   } catch (e) {}
