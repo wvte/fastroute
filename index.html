@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 49: richtingaanwijzingen volledig herzien. Drie problemen: (1) de aanwijzing koos de DICHTSTBIJZIJNDE manoeuvre, dus vlak na een bocht stond de bocht die je net gemaakt had in beeld — in een simulatie bij 5 van de 9 posities wees hij achteruit. Nu wordt de eerstvolgende manoeuvre langs de route gekozen via routeProg. (2) Er stond alleen een icoontje en "Over 200 m", nooit wát je moest doen; nu Nederlandse instructies ("Rechtsaf", "Rotonde, 2e afslag", "Einde weg, linksaf", "Afrit nemen", "Keren"). Rotondes tonen nu de afslag uit maneuver.exit. (3) De losse tekentjes (↱ ⤷ ⟳) zijn vervangen door getekende SVG-pijlen die overal gelijk renderen, met aparte varianten voor rotonde links/rechts/rechtdoor. Ook telt de afstand nu echt af (bij elke GPS-fix i.p.v. alleen bij een nieuwe routelijn) en zoomt de auto-zoom op de juiste bocht in (05-08-2026) -->
+<!-- Build 50: opruim- en controleronde na een volledige analyse. (1) Dode GPS-kalibratiecode verwijderd: de functies verwezen naar HTML die niet meer bestaat en werden nergens aangeroepen; de bijbehorende CSS en de nutteloze gpsOffset-instelling zijn ook weg. (2) De stoplijst werd bij ELKE afgevinkte stop volledig opnieuw opgebouwd (105 DOM-rijen met iconen en sleep-handlers), ook met het paneel dicht — gebeurt nu alleen nog als je de lijst open hebt staan. (3) Sluitknop van panelen kan niet meer platgedrukt worden door een lange titel (zelfde fix als bij de schakelaars in build 48). (4) DHL herhaalt soms het huisnummer in de toevoeging-kolom, wat "19 19" op het scherm gaf en een zinloze eerste zoekopdracht bij PDOK; die dubbele toevoeging wordt nu genegeerd (14 van de 1885 pakketten in de voorbeeldlijsten) (05-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -130,10 +130,6 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 .fab{position:absolute;z-index:500;background:var(--card);color:var(--text);border:none;border-radius:50%;width:54px;height:54px;font-size:24px;box-shadow:var(--shadow-md);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s ease;}
 .fab:active{transform:scale(.92);}
 .fab .lic{width:25px;height:25px;}
-#gpsCalibBar{position:absolute;left:0;right:0;bottom:0;z-index:700;background:var(--card);box-shadow:0 -4px 16px rgba(0,0,0,.2);padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);display:none;flex-direction:column;gap:10px;border-top:2px solid var(--accent);}
-#gpsCalibBar.open{display:flex;}
-#gpsCalibBar .gcTop{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:15px;color:var(--text);}
-#gpsCalibBar input[type=range]{width:100%;}
 #fabCenter{right:12px;bottom:calc(env(safe-area-inset-bottom) + 122px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
 #fabCenter .fci{font-size:22px;line-height:1;}
 #fabCenter .fcl{font-size:8px;font-weight:900;letter-spacing:.4px;color:#d40511;}
@@ -158,7 +154,10 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 @keyframes popIn{from{opacity:0;transform:translate(-50%,-50%) scale(.86);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
 .panel .sheet::before{content:'';width:42px;height:5px;border-radius:99px;background:var(--border);position:absolute;top:9px;left:50%;transform:translateX(-50%);}
 .sheet h2{margin:0;padding:22px 18px 14px;font-size:17px;font-weight:800;border-bottom:1.5px solid var(--ink);display:flex;justify-content:space-between;align-items:center;letter-spacing:1px;text-transform:uppercase;}
-.sheet h2 .x{background:var(--bg);border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-soft);padding:0;}
+/* flex:0 0 34px — zelfde reden als bij .setrow .switch: zonder dat kan een
+   lange paneeltitel de sluitknop platdrukken. */
+.sheet h2 .x{flex:0 0 34px;background:var(--bg);border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-soft);padding:0;}
+.sheet h2 > span:first-child{min-width:0;}
 .sheet h2 .x .lic{width:20px;height:20px;}
 .sheet .body{overflow-y:auto;padding:12px 16px;}
 .stop-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid #eef1f5;cursor:pointer;}
@@ -511,7 +510,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 49</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 50</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -636,7 +635,7 @@ let state = {
   rideIdx: -1,
   stops: [],
   settings: { radius: 35, autoAdvance: true, optimize: true, sound: true, autoZoom: false, houseNumbers: true,
-    allHouseNumbers: true, headingUp: true, notifyDist: 60, darkMode: false, gpsOffset: 22,
+    allHouseNumbers: true, headingUp: true, notifyDist: 60, darkMode: false,
     depot: { label: 'Wattstraat 3, Raalte', lat: null, lon: null } },
   routeGeom: null,
   routeSteps: [],       // OSRM stappen voor volgende afslag
@@ -771,10 +770,17 @@ function parseLaadlijst(pagesItems) {
         for (let i = 1; i < rest.length; i++) if (/^\d+$/.test(rest[i])) { hIdx = i; break; }
         if (hIdx === -1) { pending = null; continue; }
         const tail = rest.slice(hIdx + 1);
+        const huisnr = rest[hIdx];
+        let toevoeging = tail.slice(0, -1).join(' ');
+        // DHL's lijst herhaalt soms het huisnummer in de toevoeging-kolom
+        // ("PR HENDRIKSTR 19  19"). Dat leverde "19 19" op het scherm op én
+        // een zinloze eerste zoekopdracht bij PDOK. Zo'n toevoeging voegt
+        // niets toe, dus die laten we vallen.
+        if (toevoeging.trim() === huisnr.trim()) toevoeging = '';
         pending = {
           seq: parseFloat(cells[0]), postcode: cells[1],
-          street: rest.slice(0, hIdx).join(' '), huisnr: rest[hIdx],
-          toevoeging: tail.slice(0, -1).join(' '), city: tail.length ? tail[tail.length - 1] : '',
+          street: rest.slice(0, hIdx).join(' '), huisnr,
+          toevoeging, city: tail.length ? tail[tail.length - 1] : '',
           time: '', window: '', afhaal: false, sender: ''
         };
         continue;
@@ -2906,7 +2912,12 @@ async function afterStopChange(reroute) {
     await rebuildRoute(false);
   }
   updateNavCard();
-  renderStopList();
+  // Stoplijst alleen opnieuw opbouwen als je 'm ook echt open hebt staan.
+  // Dit bouwt per keer élke stop opnieuw op als DOM-rij (bij 105 stops dus
+  // 105 rijen met iconen en sleep-handlers) — dat gebeurde bij ELKE tik op
+  // "Klaar", ook met de lijst dicht. `openStops()` ververst 'm sowieso bij
+  // het openen, dus je ziet altijd de actuele stand.
+  if ($('panel-stops').classList.contains('open')) renderStopList();
 }
 function completeCurrent() { const c = currentStop(); if (c) { c.status = 'done'; afterStopChange(true); } }
 function skipCurrent() { const c = currentStop(); if (c) { c.status = 'skipped'; afterStopChange(true); } }
@@ -3152,16 +3163,10 @@ function pickAddSearch(pc, nr) {
 /* ---------- INSTELLINGEN ---------- */
 function setRadius(v) { state.settings.radius = +v; $('radVal').textContent = v; persist(); saveDriverProfileSoon(); }
 function setNotifyDist(v) { state.settings.notifyDist = +v; $('notifyVal').textContent = v; persist(); saveDriverProfileSoon(); }
-function setGpsOffset(v) { state.settings.gpsOffset = +v; $('offsetVal').textContent = v; persist(); saveDriverProfileSoon(); if (map && lastPos) mapCenter(); }
-function onGpsCalibInput(v) { setGpsOffset(v); $('gcVal').textContent = v + '%'; }
-function openGpsCalib() {
-  closePanel('panel-settings');
-  const v = state.settings.gpsOffset != null ? state.settings.gpsOffset : 22;
-  $('gpsCalibSlider').value = v; $('gcVal').textContent = v + '%';
-  $('gpsCalibBar').classList.add('open');
-  if (map && lastPos) mapCenter();
-}
-function closeGpsCalib() { $('gpsCalibBar').classList.remove('open'); syncSettingsUI(); }
+/* De GPS-kalibratiebalk (setGpsOffset/openGpsCalib/closeGpsCalib) is
+   verwijderd: de bijbehorende HTML bestond niet meer, dus die functies
+   verwezen naar elementen die er niet zijn en werden nergens aangeroepen.
+   De camera-offset ligt vast op 36,5% schermhoogte in mapCenter(). */
 function toggleSet(key, btnId) {
   state.settings[key] = !state.settings[key];
   $(btnId).classList.toggle('on', state.settings[key]);
@@ -3581,7 +3586,7 @@ function saveProfileAndConfirm() {
    niet pas als je op "Instellingen opslaan" drukt. Zo staat bij de volgende
    rit (of na een herstart) alles precies zoals je het achterliet, inclusief
    de zoom-stand waarop je eindigde. */
-const PROFILE_FIELDS = ['notifyDist', 'radius', 'darkMode', 'gpsOffset', 'autoAdvance', 'optimize', 'autoZoom', 'allHouseNumbers', 'sound', 'preferredZoom', 'depot'];
+const PROFILE_FIELDS = ['notifyDist', 'radius', 'darkMode', 'autoAdvance', 'optimize', 'autoZoom', 'allHouseNumbers', 'sound', 'preferredZoom', 'depot'];
 let profileSaveT = null;
 function saveDriverProfile() {
   const ride = state.rides && state.rides[state.rideIdx];
