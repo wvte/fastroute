@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 48: opmaakfix in de instellingen. De schakelaars konden meekrimpen met de tekst ernaast, waardoor die van ".1/.2- en 900-pakketten" (met uitlegregel) tot een klein rondje was platgedrukt — opgelost met flex:0 0 58px. En de witte knop stond niet gecentreerd: door border-box is de binnenmaat 55x31 px, maar de knop was 28 px met 3 px marge, dus hij liep onderaan en in de aan-stand tegen de rand aan. Nu 25 px met 3 px speling rondom: verticaal precies in het midden en symmetrisch tussen aan en uit (05-08-2026) -->
+<!-- Build 49: richtingaanwijzingen volledig herzien. Drie problemen: (1) de aanwijzing koos de DICHTSTBIJZIJNDE manoeuvre, dus vlak na een bocht stond de bocht die je net gemaakt had in beeld — in een simulatie bij 5 van de 9 posities wees hij achteruit. Nu wordt de eerstvolgende manoeuvre langs de route gekozen via routeProg. (2) Er stond alleen een icoontje en "Over 200 m", nooit wát je moest doen; nu Nederlandse instructies ("Rechtsaf", "Rotonde, 2e afslag", "Einde weg, linksaf", "Afrit nemen", "Keren"). Rotondes tonen nu de afslag uit maneuver.exit. (3) De losse tekentjes (↱ ⤷ ⟳) zijn vervangen door getekende SVG-pijlen die overal gelijk renderen, met aparte varianten voor rotonde links/rechts/rechtdoor. Ook telt de afstand nu echt af (bij elke GPS-fix i.p.v. alleen bij een nieuwe routelijn) en zoomt de auto-zoom op de juiste bocht in (05-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -224,7 +224,8 @@ input.txt:focus,select.txt:focus{outline:none;border-color:var(--blue);}
 #arriveProgBar{position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,.25);pointer-events:none;transition:width linear;}
 /* Volgende afslag */
 #turnRow{flex-basis:100%;font-size:14px;font-weight:700;background:rgba(0,0,0,.28);border-radius:8px;padding:5px 9px;margin-top:4px;display:none;align-items:center;gap:7px;}
-#turnRow .ta{font-size:20px;flex:0 0 auto;}
+#turnRow .ta{flex:0 0 auto;display:flex;align-items:center;}
+#turnRow .ta .lic{width:22px;height:22px;stroke-width:2.2;}
 /* Adresnotitie popup */
 #notesPop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);z-index:860;background:#fff;border-radius:22px;box-shadow:0 6px 30px rgba(0,0,0,.45);padding:18px 24px;text-align:center;min-width:240px;max-width:88vw;border:4px solid #ff6d00;display:none;}
 #notesPop .nIcon{font-size:44px;line-height:1;}
@@ -510,7 +511,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 48</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 49</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1907,6 +1908,10 @@ function onPos(p) {
   if (cur && cur.lat) {
     const d = hav(lastPos, cur);
     $('navDist').firstChild.textContent = d > 950 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m';
+    // Afslag-aanwijzing bij elke GPS-fix bijwerken, zodat de afstand tot de
+    // bocht echt aftelt. Voorheen ververste die alleen als de navigatielijn
+    // opnieuw werd opgehaald, dus stond er soms minutenlang dezelfde afstand.
+    updateTurnRow();
     const notifyD = state.settings.notifyDist || 60;
     if (d <= notifyD && popStop !== cur) { popStop = cur; if (!cur.isDepot) showArrivePop(cur); }
     if (d > notifyD * 2.2 && popStop === cur) hideArrivePop();
@@ -2206,18 +2211,14 @@ function doAutoZoom() {
   const kmh = spdEma !== null ? Math.round(spdEma * 3.6) : 0;
   const preferred = state.settings.preferredZoom || 16;
   let baseZoom = kmh > 60 ? Math.min(preferred, 15) : kmh > 30 ? Math.min(preferred, 16) : preferred;
-  // Bochten: dichter inzoomen naarmate de bocht nadert
-  if (state.routeSteps && state.routeSteps.length && $('turnRow').style.display === 'flex') {
-    let nearestTurnDist = Infinity;
-    for (const step of state.routeSteps) {
-      if (!step.maneuver || step.maneuver.type === 'arrive' || step.maneuver.type === 'depart') continue;
-      if (step.maneuver.location) {
-        const d = hav(lastPos, { lat: step.maneuver.location[1], lon: step.maneuver.location[0] });
-        if (d < nearestTurnDist) nearestTurnDist = d;
-      }
-    }
-    if (nearestTurnDist < 150) baseZoom = Math.max(baseZoom, 18);
-    else if (nearestTurnDist < 400) baseZoom = Math.max(baseZoom, 17);
+  // Bochten: dichter inzoomen naarmate de bocht nadert. Gebruikt dezelfde
+  // "eerstvolgende manoeuvre"-berekening als de aanwijzing zelf; voorheen werd
+  // hier de dichtstbijzijnde genomen, dus zoomde de app ook in op een bocht
+  // die je net achter je had gelaten.
+  const nm = nextManeuver();
+  if (nm && nm.step.maneuver.type !== 'arrive') {
+    if (nm.dist < 150) baseZoom = Math.max(baseZoom, 18);
+    else if (nm.dist < 400) baseZoom = Math.max(baseZoom, 17);
   }
   const curZ = camZoomTarget != null ? camZoomTarget : map.getZoom();
   if (Math.abs(curZ - baseZoom) >= 1) {
@@ -3345,26 +3346,93 @@ window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
 
 
-const TURN_ICONS = { 'turn-right':'↱', 'turn-left':'↰', 'turn-sharp-right':'⤷', 'turn-sharp-left':'⤶',
-  'turn-slight-right':'↗', 'turn-slight-left':'↖', 'uturn':'↩', 'roundabout':'⟳', 'merge':'↑', 'depart':'↑', 'arrive':'⚑' };
-function updateTurnRow() {
-  if (!lastPos || !state.routeSteps.length) { $('turnRow').style.display = 'none'; return; }
-  let best = null, bestD = Infinity;
-  for (const step of state.routeSteps) {
-    if (!step.maneuver || step.maneuver.type === 'depart') continue;
-    if (step.maneuver.location) {
-      const d = hav(lastPos, { lat: step.maneuver.location[1], lon: step.maneuver.location[0] });
-      if (d < bestD) { bestD = d; best = step; }
-    }
+/* ---------- RICHTINGAANWIJZINGEN ----------
+   Getekende pijlen i.p.v. losse tekentjes (↱ ⤷ ⟳): die renderden per toestel
+   anders en zeiden bij een rotonde niets over welke afslag je moet hebben. */
+const TURN_SVG = {
+  straight:      '<path d="M12 20V5"/><path d="M6.5 10.5L12 5l5.5 5.5"/>',
+  right:         '<path d="M7 20v-6a4 4 0 0 1 4-4h6"/><path d="M13.5 6l4 4-4 4"/>',
+  left:          '<path d="M17 20v-6a4 4 0 0 0-4-4H7"/><path d="M10.5 6l-4 4 4 4"/>',
+  slightRight:   '<path d="M9 20v-7l6-6"/><path d="M11 7h5v5"/>',
+  slightLeft:    '<path d="M15 20v-7L9 7"/><path d="M13 7H8v5"/>',
+  uturn:         '<path d="M8 20v-9a4 4 0 0 1 8 0v6"/><path d="M13 14l3 3 3-3"/>',
+  roundRight:    '<circle cx="11" cy="12" r="4"/><path d="M11 21v-5"/><path d="M15 12h5"/><path d="M17.5 9.5L20 12l-2.5 2.5"/>',
+  roundLeft:     '<circle cx="13" cy="12" r="4"/><path d="M13 21v-5"/><path d="M9 12H4"/><path d="M6.5 9.5L4 12l2.5 2.5"/>',
+  roundStraight: '<circle cx="12" cy="13" r="4"/><path d="M12 21v-4"/><path d="M12 9V3"/><path d="M9.5 5.5L12 3l2.5 2.5"/>',
+  flag:          '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>'
+};
+function turnIcon(k) {
+  return '<svg class="lic" viewBox="0 0 24 24" aria-hidden="true">' + (TURN_SVG[k] || TURN_SVG.straight) + '</svg>';
+}
+
+// OSRM-manoeuvre omzetten naar een pijl + Nederlandse instructie.
+// Voorheen stond er alleen een icoontje en "Over 200 m" — nooit wát je moest
+// doen, en bij een rotonde ontbrak de afslag volledig.
+function maneuverInfo(man) {
+  const type = (man.type || '').toLowerCase();
+  const mod = (man.modifier || '').toLowerCase();
+  const rechts = mod.includes('right'), links = mod.includes('left');
+  const kant = rechts ? 'rechts' : links ? 'links' : '';
+  const zijIcon = rechts ? 'right' : links ? 'left' : 'straight';
+  const flauwIcon = rechts ? 'slightRight' : links ? 'slightLeft' : 'straight';
+
+  if (type === 'roundabout' || type === 'rotary' || type === 'roundabout turn') {
+    return {
+      icon: rechts ? 'roundRight' : links ? 'roundLeft' : 'roundStraight',
+      text: man.exit ? `Rotonde, ${man.exit}e afslag` : 'Rotonde volgen'
+    };
   }
-  if (!best || bestD > 3000) { $('turnRow').style.display = 'none'; return; }
-  const modifier = (best.maneuver.modifier || '').replace(/ /g, '-');
-  const type = best.maneuver.type === 'turn' ? 'turn-' + modifier : best.maneuver.type;
-  const icon = TURN_ICONS[type] || TURN_ICONS['turn-' + modifier] || '↑';
-  const dist = fmtTurnDist(bestD);
-  const name = best.name ? best.name : '';
-  $('turnArrow').textContent = icon;
-  $('turnText').textContent = `Over ${dist}${name ? ' → ' + name : ''}`;
+  if (type === 'exit roundabout' || type === 'exit rotary') return { icon: zijIcon, text: 'Rotonde verlaten' };
+  if (type === 'arrive') return { icon: 'flag', text: 'Je bent er' };
+  if (type === 'merge') return { icon: flauwIcon, text: kant ? 'Invoegen naar ' + kant : 'Invoegen' };
+  if (type === 'fork') return { icon: flauwIcon, text: kant ? (rechts ? 'Rechts' : 'Links') + ' aanhouden' : 'Rechtdoor' };
+  if (type === 'on ramp') return { icon: flauwIcon, text: 'Oprit nemen' };
+  if (type === 'off ramp') return { icon: flauwIcon, text: 'Afrit nemen' };
+  if (type === 'end of road') return { icon: zijIcon, text: kant ? `Einde weg, ${kant}af` : 'Einde van de weg' };
+  if (mod === 'uturn') return { icon: 'uturn', text: 'Keren' };
+  if (mod === 'sharp right') return { icon: 'right', text: 'Scherp rechtsaf' };
+  if (mod === 'sharp left') return { icon: 'left', text: 'Scherp linksaf' };
+  if (mod === 'slight right') return { icon: 'slightRight', text: 'Flauwe bocht rechts' };
+  if (mod === 'slight left') return { icon: 'slightLeft', text: 'Flauwe bocht links' };
+  if (mod === 'right') return { icon: 'right', text: 'Rechtsaf' };
+  if (mod === 'left') return { icon: 'left', text: 'Linksaf' };
+  return { icon: 'straight', text: 'Rechtdoor' };
+}
+
+/* De EERSTVOLGENDE manoeuvre, gemeten langs de route.
+   Hiervoor werd simpelweg de DICHTSTBIJZIJNDE manoeuvre gekozen — vlak na een
+   bocht was dat de bocht die je net gemaakt had, dus stond de aanwijzing
+   achter je. Nu vergelijken we de afstand langs de route (`routeProg` uit de
+   map-matching) met de afstand tot elke manoeuvre, en pakken we de eerste die
+   nog vóór je ligt. */
+function nextManeuver() {
+  const steps = state.routeSteps;
+  if (!lastPos || !steps || !steps.length) return null;
+  let prog = (matchOn && routeProg != null) ? routeProg : null;
+  if (prog == null) {
+    const pr = projectOnRoute(lastPos.lat, lastPos.lon, null);
+    prog = pr ? pr.prog : null;
+  }
+  if (prog == null) return null;
+  let cum = 0;
+  for (let i = 0; i < steps.length; i++) {
+    const man = steps[i].maneuver;
+    const afstandTot = cum;                 // manoeuvre ligt aan het BEGIN van de stap
+    cum += steps[i].distance || 0;
+    if (!man || man.type === 'depart') continue;
+    const d = afstandTot - prog;
+    if (d > 5) return { step: steps[i], dist: d };
+  }
+  return null;
+}
+
+function updateTurnRow() {
+  const nm = nextManeuver();
+  if (!nm || nm.dist > 3000) { $('turnRow').style.display = 'none'; return; }
+  const info = maneuverInfo(nm.step.maneuver);
+  const naam = nm.step.name || '';
+  $('turnArrow').innerHTML = turnIcon(info.icon);
+  $('turnText').textContent = `${fmtTurnDist(nm.dist)} · ${info.text}${naam ? ' · ' + naam : ''}`;
   $('turnRow').style.display = 'flex';
 }
 
