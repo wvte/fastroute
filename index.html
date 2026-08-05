@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 46: km en rijtijd zijn er weer, en ze zijn nu volgens de ECHTE weg. Eén route-aanvraag met alle 91 punten van een rit was te zwaar voor de gratis OSRM-demoserver en liep in de timeout, waardoor km/rijtijd leeg bleven. De rit wordt nu opgeknipt in stukken van 25 punten (4 kleine aanvragen bij 90 stops) die hun grenspunt delen, dus de deeltrajecten sluiten naadloos aan en de totalen zijn exact. Lukt één stuk niet, dan wordt alleen dát stuk geschat en verschijnt er een "±" voor de waarde. Verder vuurde élke afgevinkte stop een volledige route-aanvraag af (90 per rit!) — dat gebeurt nu lokaal uit de bewaarde deeltrajecten, zonder netwerk; alleen bij verslepen of een nieuwe stop wordt er echt herrekend (04-08-2026) -->
+<!-- Build 47: fix op de kernfunctie van de app — na een tik op "Klaar" kon de pijl naar het VORIGE adres blijven wijzen. Oorzaak: liep er net een route-aanvraag (van een GPS-fix), dan werd de nieuwe aanroep overgeslagen door de overlap-bescherming uit build 41, terwijl onPos() de "nieuwe stop"-trigger al had verbruikt. De pijl corrigeerde zichzelf pas als je 30 m verder was. Een overgeslagen aanroep wordt nu onthouden en alsnog uitgevoerd zodra de lopende klaar is. Verder bevestigd: de DHL-volgorde blijft sinds build 45 volledig intact; alleen .1/.2-pakketten en de 900-serie worden nog ingevoegd (04-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -501,7 +501,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 46</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 47</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -1483,9 +1483,16 @@ let routeGeomStop = null, navFail = 0, navBackoffUntil = 0;
 // (en dus een rechte lijn i.p.v. de echte weg) alleen maar groter. Met deze
 // guard wordt een overlappende aanroep gewoon overgeslagen; de volgende
 // GPS-fix (of de volgende rebuildRoute) proberen het vanzelf opnieuw.
-let navLineBusy = false;
+// LET OP: een overgeslagen aanroep mag niet zomaar verdwijnen. Tik je op
+// "Klaar" terwijl er net een GPS-fix een aanvraag had gestart, dan werd de
+// nieuwe aanroep stilletjes overgeslagen — en omdat onPos() `navLineStop` al
+// bij de aanroep op de nieuwe stop zet, zag de volgende fix geen wissel meer
+// en bleef de pijl naar het VORIGE adres wijzen tot je 30 m verder was.
+// Daarom onthouden we een overgeslagen aanroep en draaien 'm alsnog zodra de
+// lopende klaar is.
+let navLineBusy = false, navLineAgain = false;
 async function updateNavLine() {
-  if (navLineBusy) return;
+  if (navLineBusy) { navLineAgain = true; return; }
   navLineBusy = true;
   try {
   let cur = currentStop();
@@ -1539,6 +1546,10 @@ async function updateNavLine() {
   updateNavCard();
   } finally {
     navLineBusy = false;
+    // Is er tijdens deze aanvraag een nieuwe nodig geworden (bv. je vinkte een
+    // stop af), dan die alsnog uitvoeren zodat de pijl meteen naar het juiste
+    // volgende adres wijst.
+    if (navLineAgain) { navLineAgain = false; setTimeout(updateNavLine, 0); }
   }
 }
 
