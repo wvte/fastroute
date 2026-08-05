@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Build 47: fix op de kernfunctie van de app — na een tik op "Klaar" kon de pijl naar het VORIGE adres blijven wijzen. Oorzaak: liep er net een route-aanvraag (van een GPS-fix), dan werd de nieuwe aanroep overgeslagen door de overlap-bescherming uit build 41, terwijl onPos() de "nieuwe stop"-trigger al had verbruikt. De pijl corrigeerde zichzelf pas als je 30 m verder was. Een overgeslagen aanroep wordt nu onthouden en alsnog uitgevoerd zodra de lopende klaar is. Verder bevestigd: de DHL-volgorde blijft sinds build 45 volledig intact; alleen .1/.2-pakketten en de 900-serie worden nog ingevoegd (04-08-2026) -->
+<!-- Build 48: opmaakfix in de instellingen. De schakelaars konden meekrimpen met de tekst ernaast, waardoor die van ".1/.2- en 900-pakketten" (met uitlegregel) tot een klein rondje was platgedrukt — opgelost met flex:0 0 58px. En de witte knop stond niet gecentreerd: door border-box is de binnenmaat 55x31 px, maar de knop was 28 px met 3 px marge, dus hij liep onderaan en in de aan-stand tegen de rand aan. Nu 25 px met 3 px speling rondom: verticaal precies in het midden en symmetrisch tussen aan en uit (05-08-2026) -->
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -176,10 +176,19 @@ body.dark .btn.grey{background:#222c42;color:var(--text);}
 .setrow{display:flex;justify-content:space-between;align-items:center;padding:15px 4px;border-bottom:1px solid var(--border);font-size:17px;}
 .setrow:last-child{border-bottom:none;}
 .setrow input[type=range]{width:46%;}
-.setrow .switch{width:58px;height:34px;border-radius:17px;background:#c8d0da;position:relative;cursor:pointer;border:1.5px solid var(--ink);}
+/* De schakelaar mag NOOIT meekrimpen met de tekst ernaast: bij een langer
+   label (zoals de .1/.2-regel met uitleg) werd hij anders platgedrukt tot een
+   klein rondje. flex:0 0 58px houdt hem altijd op ware grootte. */
+.setrow .switch{flex:0 0 58px;width:58px;height:34px;border-radius:17px;background:#c8d0da;position:relative;cursor:pointer;border:1.5px solid var(--ink);}
 .setrow .switch.on{background:var(--green);}
-.setrow .switch::after{content:'';position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;background:#fff;transition:left .15s;}
+/* Knop precies gecentreerd. Door border-box is de binnenmaat 58-3=55 bij
+   34-3=31 px; met een knop van 25 px en 3 px speling rondom staat hij zowel
+   verticaal als horizontaal netjes in het midden (was 28 px met top/left 3,
+   waardoor hij onderaan en in de aan-stand tegen de rand aan liep). */
+.setrow .switch::after{content:'';position:absolute;top:3px;left:3px;width:25px;height:25px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s;}
 .setrow .switch.on::after{left:27px;}
+/* Label mag krimpen/afbreken, de schakelaar niet */
+.setrow > span{min-width:0;padding-right:12px;}
 .badge{display:inline-block;background:var(--green);color:#fff;border-radius:8px;font-size:13px;padding:3px 8px;font-weight:700;}
 .badge.orange{background:var(--accent);color:#10141a;}
 input.txt,select.txt{width:100%;font-size:18px;padding:14px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--card);color:var(--text);margin-bottom:10px;}
@@ -501,7 +510,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 47</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 48</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
