@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Build 51: DHL's nieuwe laadlijst zet de ritkop op élke pagina in plaats van alleen op de eerste pagina van een rit. De parser maakte bij elke kop een nieuwe rit aan, dus werd er één rit per PAGINA aangemaakt: de 17 ritten van 21-10 kwamen als 50 losse ritten in de lijst, rit 101 vier keer met elk een kwart van de stops. Nu worden pagina's met dezelfde rit + datum samengevoegd tot één rit, en is de rolcontainercode in de Bezorger-regel optioneel (die staat alleen op de eerste pagina). Getest met de echte laadlijsten: nieuw formaat 50 pagina's -> 17 ritten met alle 1152 pakketten, oud formaat onveranderd 15 ritten / 1159 pakketten (22-10-2026) -->
 <!-- Build 50: opruim- en controleronde na een volledige analyse. (1) Dode GPS-kalibratiecode verwijderd: de functies verwezen naar HTML die niet meer bestaat en werden nergens aangeroepen; de bijbehorende CSS en de nutteloze gpsOffset-instelling zijn ook weg. (2) De stoplijst werd bij ELKE afgevinkte stop volledig opnieuw opgebouwd (105 DOM-rijen met iconen en sleep-handlers), ook met het paneel dicht — gebeurt nu alleen nog als je de lijst open hebt staan. (3) Sluitknop van panelen kan niet meer platgedrukt worden door een lange titel (zelfde fix als bij de schakelaars in build 48). (4) DHL herhaalt soms het huisnummer in de toevoeging-kolom, wat "19 19" op het scherm gaf en een zinloze eerste zoekopdracht bij PDOK; die dubbele toevoeging wordt nu genegeerd (14 van de 1885 pakketten in de voorbeeldlijsten) (05-08-2026) -->
 <html lang="nl">
 <head>
@@ -510,7 +511,7 @@ body.dark .addsr:active{background:#0f1520;}
       <div id="endRideRow" style="padding:0 4px 14px">
         <button class="btn red" onclick="endRide()"><svg class="lic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Rit beëindigen</button>
       </div>
-      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 50</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
+      <div style="font-size:13px;color:var(--grey);padding:0 4px 14px"><b>RouteFast build 51</b> · kaart © OpenStreetMap · routing OSRM · geocoding PDOK</div>
     </div>
   </div>
 </div>
@@ -748,18 +749,39 @@ function renderDailyFact() {
 
 const PC_RE = /^\d{4}[A-Z]{2}$/;
 function parseLaadlijst(pagesItems) {
-  const rides = []; let ride = null, pending = null;
+  const rides = [], byKey = new Map();
+  let ride = null, pending = null;
   for (const pageItems of pagesItems) {
     for (const cells of groupRows(pageItems)) {
       const line = cells.join(' ');
       const mRit = line.match(/Laadlijst rit:\s*(\d+)/);
       if (mRit) {
-        ride = { rit: mRit[1], bezorger: '', bezorgerId: '', code: '', datum: (line.match(/Datum:\s*([\d-]+)/) || [])[1] || '', stops: [] };
-        rides.push(ride); pending = null; continue;
+        // DHL's nieuwe laadlijsten zetten de volledige ritkop ("Laadlijst
+        // rit: 101 · Datum · Bezorger · Bezorgopdrachten") op ÉLKE pagina van
+        // die rit; in het oude formaat stond die alleen op de eerste pagina.
+        // Elke kop blind als nieuwe rit opvoeren maakte er dus één rit per
+        // PAGINA van: de rittenlijst toonde rit 101 vier keer met elk een
+        // kwart van de stops, en koos je er een, dan reed je maar een stuk
+        // van je rit. Daarom zoeken we eerst of deze rit al bestaat en vullen
+        // we die verder aan. Sleutel is ritnummer + datum, zodat een lijst
+        // met meerdere dagen erin niet alsnog samenvalt.
+        const datum = (line.match(/Datum:\s*([\d-]+)/) || [])[1] || '';
+        const key = mRit[1] + '|' + datum;
+        ride = byKey.get(key);
+        if (!ride) {
+          ride = { rit: mRit[1], bezorger: '', bezorgerId: '', code: '', datum, stops: [] };
+          byKey.set(key, ride);
+          rides.push(ride);
+        }
+        pending = null; continue;
       }
       if (!ride) continue;
-      const mBez = line.match(/Bezorger:\s*(\d+)\s+(.+?)\s+(\d{4})\s+Afhaalopdrachten/);
-      if (mBez) { ride.bezorgerId = mBez[1]; ride.bezorger = mBez[2].trim(); ride.code = mBez[3]; continue; }
+      // Op een vervolgpagina laat DHL de 4-cijferige rolcontainercode weg
+      // ("Bezorger: 657325 KOLKMAN I Afhaalopdrachten: 2"), dus die groep is
+      // optioneel — en een ontbrekende code mag de code van de eerste pagina
+      // niet wissen.
+      const mBez = line.match(/Bezorger:\s*(\d+)\s+(.+?)(?:\s+(\d{4}))?\s+Afhaalopdrachten/);
+      if (mBez) { ride.bezorgerId = mBez[1]; ride.bezorger = mBez[2].trim(); if (mBez[3]) ride.code = mBez[3]; continue; }
       if (/Pagina \d+ van \d+/.test(line) || /Hub code:/.test(line)) continue;
       // Pakketnummer is meestal een heel getal, maar DHL voegt soms een
       // tussengevoegd pakket toe als bijv. "52.1" of "0.2" (extra stop
