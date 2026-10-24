@@ -24,6 +24,7 @@ set_str() { $PB -c "Delete :$1" "$PLIST" >/dev/null 2>&1 || true; $PB -c "Add :$
 set_str CFBundleShortVersionString "1.$BUILD_NR.0"
 set_str CFBundleVersion            "$BUNDLE_VERSION"
 set_str CFBundleDisplayName        "RouteFast"
+set_str CFBundleIconName           "AppIcon"
 
 # --- locatierechten --------------------------------------------------------
 set_str NSLocationWhenInUseUsageDescription \

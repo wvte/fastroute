@@ -102,6 +102,26 @@ jobs:
           rm -rf Payload RouteFast.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/
+          TARGET="Payload/$(basename "$APP")"
+
+          # Ad-hoc signen. Zonder handtekening heeft de binary geen
+          # LC_CODE_SIGNATURE-slot, en dan kan Signulous er zijn eigen
+          # certificaat niet in schuiven ("Signing Failed").
+          # Frameworks eerst, daarna de app zelf.
+          if [ -d "$TARGET/Frameworks" ]; then
+            find "$TARGET/Frameworks" -maxdepth 1 -name '*.framework' -print0 \
+              | xargs -0 -I{} codesign --force --sign - --timestamp=none {}
+          fi
+          codesign --force --sign - --timestamp=none "$TARGET"
+
+          # Controleren dat het slot er nu echt in zit
+          codesign -dv "$TARGET" 2>&1 || true
+          if ! otool -l "$TARGET/$(basename "$APP" .app)" | grep -q LC_CODE_SIGNATURE; then
+            echo "FOUT: binary heeft geen LC_CODE_SIGNATURE, Signulous zal hem weigeren" >&2
+            exit 1
+          fi
+          echo "LC_CODE_SIGNATURE aanwezig"
+
           zip -qry RouteFast.ipa Payload
           ls -lh RouteFast.ipa
 
