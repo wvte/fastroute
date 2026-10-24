@@ -1,0 +1,9 @@
+# Capacitor: alles hieronder wordt in de build opnieuw gegenereerd
+node_modules/
+www/
+ios/
+assets/
+build/
+Payload/
+*.ipa
+.DS_Store

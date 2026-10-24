@@ -1,0 +1,20 @@
+{
+  "name": "routefast-planner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RouteFast Planner — sequentiele navigator voor DHL bezorgers (iOS wrapper)",
+  "scripts": {
+    "prepare:www": "bash scripts/prepare-www.sh",
+    "ios:setup": "npm run prepare:www && npx cap add ios && bash scripts/patch-ios.sh",
+    "ios:sync": "npm run prepare:www && npx cap sync ios && bash scripts/patch-ios.sh",
+    "ios:open": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.3",
+    "@capacitor/ios": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.3"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "appId": "nl.routefast.planner",
+  "appName": "RouteFast",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": false,
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 600,
+      "backgroundColor": "#0d2a4a"
+    }
+  }
+}

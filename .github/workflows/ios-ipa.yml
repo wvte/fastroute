@@ -1,0 +1,131 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'index.html'
+      - 'sw.js'
+      - '*.png'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - 'scripts/**'
+      - '.github/workflows/ios-ipa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Buildnummer uit index.html lezen
+        id: build
+        run: |
+          NR=$(grep -m1 -o 'Build [0-9]\{1,4\}' index.html | grep -o '[0-9]\{1,4\}' || echo 1)
+          echo "nr=$NR" >> "$GITHUB_OUTPUT"
+          echo "RouteFast build $NR"
+
+      - name: www/ bouwen uit index.html
+        run: bash scripts/prepare-www.sh
+
+      - name: npm install
+        run: npm install --no-audit --no-fund
+
+      - name: iOS-project genereren
+        run: npx cap add ios
+
+      - name: App-iconen genereren
+        continue-on-error: true
+        run: |
+          mkdir -p assets
+          # 1024x1024 zonder alpha, zoals de App Store eist
+          sips -s format png -z 1024 1024 icon.png --out assets/icon.png
+          cp assets/icon.png assets/logo.png
+          npx @capacitor/assets generate \
+            --ios \
+            --assetPath assets \
+            --iconBackgroundColor '#0d2a4a' \
+            --iconBackgroundColorDark '#0d2a4a' \
+            --splashBackgroundColor '#0d2a4a' \
+            --splashBackgroundColorDark '#0d2a4a'
+
+      - name: Web-assets syncen
+        run: npx cap sync ios
+
+      - name: iOS-project patchen (GPS, wake lock, versie)
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: bash scripts/patch-ios.sh
+
+      - name: Unsigned build
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -destination 'generic/platform=iOS' \
+            -quiet \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            EXPANDED_CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: IPA inpakken
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$APP" ]; then
+            echo "Geen .app gevonden" >&2
+            find build/Build/Products -maxdepth 3 >&2 || true
+            exit 1
+          fi
+          echo "App: $APP"
+          rm -rf Payload RouteFast.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry RouteFast.ipa Payload
+          ls -lh RouteFast.ipa
+
+      - name: Artifact uploaden
+        uses: actions/upload-artifact@v4
+        with:
+          name: RouteFast-ipa-build-${{ steps.build.outputs.nr }}
+          path: RouteFast.ipa
+          retention-days: 30
+
+      - name: Latest release bijwerken
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: RouteFast build ${{ steps.build.outputs.nr }}
+          body: |
+            **RouteFast Planner — iOS build ${{ steps.build.outputs.nr }}**
+
+            Vaste downloadlink (altijd de nieuwste):
+            `https://github.com/${{ github.repository }}/releases/latest/download/RouteFast.ipa`
+
+            Deze IPA is **unsigned**. Upload hem bij Signulous, die signt hem met jouw
+            certificaat en geeft je een install-link voor je iPhone.
+
+            - App-versie: 1.${{ steps.build.outputs.nr }}.0 (bundle ${{ github.run_number }})
+            - Commit: ${{ github.sha }}
+          files: RouteFast.ipa
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
