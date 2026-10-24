@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Build 52: in- en uitzoomen liep op ~4fps zodra er een echte rit geladen was. Elke stop is een DOM-marker en met huisnummerlabels erbij staan er bij 105 stops ruim 200 losse elementen op de kaart; MapLibre schrijft daar op élk frame van een pinch een transform naar, en het compositen daarvan kost meer dan de kaart zelf tekenen. Tijdens een pinch worden die markers nu uit de renderboom gehaald (display:none via .map-pinch) en na zoomend meteen teruggezet. De GPS-pijl blijft staan. Alleen échte gebruikersgebaren tellen, camera- en autozoom-animaties laten de markers gewoon staan (24-10-2026) -->
 <!-- Build 51: DHL's nieuwe laadlijst zet de ritkop op élke pagina in plaats van alleen op de eerste pagina van een rit. De parser maakte bij elke kop een nieuwe rit aan, dus werd er één rit per PAGINA aangemaakt: de 17 ritten van 21-10 kwamen als 50 losse ritten in de lijst, rit 101 vier keer met elk een kwart van de stops. Nu worden pagina's met dezelfde rit + datum samengevoegd tot één rit, en is de rolcontainercode in de Bezorger-regel optioneel (die staat alleen op de eerste pagina). Getest met de echte laadlijsten: nieuw formaat 50 pagina's -> 17 ritten met alle 1152 pakketten, oud formaat onveranderd 15 ritten / 1159 pakketten (22-10-2026) -->
 <!-- Build 50: opruim- en controleronde na een volledige analyse. (1) Dode GPS-kalibratiecode verwijderd: de functies verwezen naar HTML die niet meer bestaat en werden nergens aangeroepen; de bijbehorende CSS en de nutteloze gpsOffset-instelling zijn ook weg. (2) De stoplijst werd bij ELKE afgevinkte stop volledig opnieuw opgebouwd (105 DOM-rijen met iconen en sleep-handlers), ook met het paneel dicht — gebeurt nu alleen nog als je de lijst open hebt staan. (3) Sluitknop van panelen kan niet meer platgedrukt worden door een lange titel (zelfde fix als bij de schakelaars in build 48). (4) DHL herhaalt soms het huisnummer in de toevoeging-kolom, wat "19 19" op het scherm gaf en een zinloze eerste zoekopdracht bij PDOK; die dubbele toevoeging wordt nu genegeerd (14 van de 1885 pakketten in de voorbeeldlijsten) (05-08-2026) -->
 <html lang="nl">
@@ -208,6 +209,13 @@ input.txt:focus,select.txt:focus{outline:none;border-color:var(--blue);}
 .rf-attrib-panel a{color:#1565d8;}
 .rf-attrib.open .rf-attrib-panel{display:block;}
 .hnr-label{background:transparent;border:none;box-shadow:none;font-size:11px;font-weight:700;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;}
+/* Tijdens een pinch verbergen we de DOM-markers. MapLibre schrijft op élk
+   frame een transform naar elke marker; bij een rit van 100+ stops staan er
+   met de huisnummerlabels erbij ruim 200 losse elementen op de kaart, en het
+   compositen daarvan kost meer dan de kaart zelf tekenen. display:none haalt
+   ze uit de renderboom, dus zoomen blijft vloeiend. De GPS-pijl blijft staan,
+   die is er maar één. Na zoomend komen ze meteen terug. */
+.map-pinch .maplibregl-marker:not(.mk-gps){display:none!important}
 .mk.ooo{border:3px solid var(--red);}
 .mk.steeg{border:3px solid var(--green);}
 /* Multi-pakket: DHL geel i.p.v. paars */
@@ -1669,11 +1677,21 @@ function initMap() {
   });
   // Alleen échte gebruikersgebaren (pinch) tellen als voorkeurszoom;
   // camera- en autozoom-animaties overschrijven je voorkeur niet meer
-  map.on('zoomstart', e => { if (e && e.originalEvent) { userZooming = true; saveNextZoom = true; camZoomTarget = null; } });
+  map.on('zoomstart', e => {
+    if (e && e.originalEvent) {
+      userZooming = true; saveNextZoom = true; camZoomTarget = null;
+      // DOM-markers uit de renderboom halen zolang de pinch duurt
+      map.getContainer().classList.add('map-pinch');
+    }
+  });
   map.on('zoomend', () => {
+    map.getContainer().classList.remove('map-pinch');
     if (userZooming) { userZooming = false; if (saveNextZoom) { state.settings.preferredZoom = map.getZoom(); persist(); saveDriverProfileSoon(); } }
     saveNextZoom = false;
   });
+  // Vangnet: mocht zoomend ooit overgeslagen worden, dan zet idle de markers
+  // sowieso weer aan. Zonder dit zou een onderbroken pinch ze verborgen laten.
+  map.on('idle', () => { map.getContainer().classList.remove('map-pinch'); });
 }
 
 function currentStop() { return state.stops.find(s => s.status === 'pending'); }
