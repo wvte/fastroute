@@ -25,10 +25,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Node 20
+      - name: Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Buildnummer uit index.html lezen
         id: build
@@ -69,10 +69,13 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: bash scripts/patch-ios.sh
 
+      - name: Schemes controleren
+        run: xcodebuild -list -project ios/App/App.xcodeproj
+
       - name: Unsigned build
         run: |
           xcodebuild \
-            -workspace ios/App/App.xcworkspace \
+            -project ios/App/App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \

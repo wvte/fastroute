@@ -49,6 +49,12 @@ $PB -c "Add :UIViewControllerBasedStatusBarAppearance bool false" "$PLIST"
 $PB -c "Delete :UIStatusBarStyle" "$PLIST" >/dev/null 2>&1 || true
 $PB -c "Add :UIStatusBarStyle string UIStatusBarStyleLightContent" "$PLIST"
 
+# Capacitor's template zet hier nog armv7 in, wat op een arm64-only build
+# een "app niet compatibel"-melding kan geven bij sideloaden.
+$PB -c "Delete :UIRequiredDeviceCapabilities" "$PLIST" >/dev/null 2>&1 || true
+$PB -c "Add :UIRequiredDeviceCapabilities array" "$PLIST"
+$PB -c "Add :UIRequiredDeviceCapabilities:0 string arm64" "$PLIST"
+
 # --- scherm wakker houden zolang de app open staat -------------------------
 # Vervangt navigator.wakeLock, die in een WKWebView niet bestaat.
 if [ -f "$APPDELEGATE" ] && ! grep -q "isIdleTimerDisabled" "$APPDELEGATE"; then

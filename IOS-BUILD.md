@@ -22,7 +22,9 @@ Bij elke push naar `main` die `index.html`, `sw.js`, een icoon, de Capacitor
 config of de scripts raakt. Ook handmatig te starten via Actions →
 *Build iOS IPA* → *Run workflow*.
 
-Bouwtijd is ongeveer 6 tot 10 minuten (CocoaPods plus Xcode).
+Bouwtijd is ongeveer 5 tot 8 minuten. Capacitor 8 gebruikt Swift Package
+Manager in plaats van CocoaPods, dus er is geen `.xcworkspace` en de build gaat
+direct via `ios/App/App.xcodeproj`. Node 22 of hoger is vereist.
 
 ## Wat de build doet
 
